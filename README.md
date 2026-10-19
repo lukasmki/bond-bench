@@ -90,7 +90,7 @@ Implemented methods:
 | name | family | notes |
 | --- | --- | --- |
 | `canonical-O` | optimization | Algorithm O: contact map A(X), then a lexicographic prior solved exactly with CP-SAT. The `kim2015` preset maximizes ΣB, then minimizes Σ\|q\|. The `atom_penalty` preset (`--param preset=atom_penalty`) minimizes the Wang et al. (2006) atomic penalty scores in `eval/tables/atom_penalties.csv`, then Σ\|q\|. It covers H, C, N, O, F, Si, P, S, Cl, Br and I; molecules with other elements are reported as unsupported. Returns every co-optimal structure; a `prior_tied` flag marks resonance or tautomer ambiguity. |
-| `canonical-R` | rule | Algorithm R: bond-length windows (fitted on B2 by `scripts/fit_windows.py`) and angle-based hybridization feed a greedy cascade in certainty order. Hamming-nearest projection onto 𝒢 follows. |
+| `canonical-R` | rule | Algorithm R: bond-length windows and angle-based hybridization feed a greedy cascade in certainty order. Windows are centred on MMFF94 reference lengths (`scripts/mmff_windows.py`), so no stratum is used; `--param windows=b2` selects windows fitted on B2 instead. Hamming-nearest projection onto 𝒢 follows. |
 | `rdkit-determinebonds` | optimization | RDKit's xyz2mol (Kim & Kim 2015). Requires explicit H. |
 | `openbabel` | external | Open Babel `ConnectTheDots` + `PerceiveBondOrders`. Runs in its own GPL environment in `adapters/openbabel` (`cd adapters/openbabel && uv sync`). |
 | `external` | external | Any program that speaks the JSONL protocol in `eval/methods/external.py`: `--param command='prog {input} {output}'`. |

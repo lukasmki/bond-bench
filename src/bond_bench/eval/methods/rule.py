@@ -1,6 +1,6 @@
 """Canonical R: explicit semi-algebraic partition (§4.1).
 
-Windows on bond lengths give candidate order sets, a hybridization test on
+Windows on bond lengths (MMFF94 reference lengths by default) give candidate order sets, a hybridization test on
 angles prunes them, a greedy cascade in certainty order picks one order per
 contact, and the result is projected onto 𝒢 (Hamming-nearest valid
 structure) when it is not already valid. Aromatic windows (k = 1.5) survive to
@@ -41,6 +41,7 @@ class CanonicalR(Method):
     family = "rule"
     capabilities = Capabilities(stripped_h=True, charged=True, radicals=True)
     defaults = {
+        "windows": "mmff",  # bond-length windows: "mmff", "b2" or a CSV path (see eval/tables)
         "table": "octet",
         "c_max": 1,
         "contact_scale": CONTACT_SCALE,
@@ -77,7 +78,7 @@ class CanonicalR(Method):
         z = query.atomic_numbers
         x = query.positions
         edges, _ = contact_map(z, x, p["contact_scale"])
-        windows = bond_windows()
+        windows = bond_windows(p["windows"])
         n, m = query.n_atoms, len(edges)
         nbrs: list[list[int]] = [[] for _ in range(n)]
         for i, j in edges.tolist():

@@ -204,3 +204,24 @@ def test_atom_penalty_unsupported_elements():
     _, q = _query("CB(C)C")
     assert "penalty" in get_method("canonical-O", {"preset": "atom_penalty"}).unsupported_reason(q)
     assert get_method("canonical-O").unsupported_reason(q) is None
+
+
+def test_mmff_windows_are_ordered_and_disjoint():
+    from collections import defaultdict
+
+    from bond_bench.eval.tables import bond_windows
+
+    by_pair = defaultdict(list)
+    for (a, b, k), w in bond_windows("mmff").items():
+        assert w.lo < w.center < w.hi
+        by_pair[(a, b)].append(w)
+    for ws in by_pair.values():
+        ws.sort(key=lambda w: w.lo)
+        assert all(x.hi <= y.lo + 1e-9 for x, y in zip(ws, ws[1:]))  # midpoint edges never overlap
+
+
+@pytest.mark.parametrize("windows", ["mmff", "b2"])
+def test_canonical_r_window_tables(windows):
+    rec, q = _query("CC(=O)Nc1ccc(O)cc1")
+    pred = get_method("canonical-R", {"windows": windows}).predict(q)
+    assert pred.status is Status.OK and _smiles_of(q, pred.graph) == rec.smiles

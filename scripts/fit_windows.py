@@ -1,5 +1,8 @@
 """Fit the rule-based distance windows W_{ab k} from the B2 calibration stratum.
 
+This is the alternative ``windows=b2`` table of canonical R; the default
+(``windows=mmff``) comes from ``scripts/mmff_windows.py`` and uses no stratum.
+
 B2 (GEOM-DRUGS) is labeled in-distribution and is not used for headline
 ranking, so fitting here does not leak into the headline strata. Aromatic
 bonds form their own class k = 1.5 because Kekulé labels split them
@@ -18,7 +21,7 @@ import numpy as np
 import polars as pl
 
 from bond_bench.data.store import StratumReader
-from bond_bench.eval.tables import WINDOWS_CSV
+from bond_bench.eval.tables import WINDOW_TABLES
 
 
 def main() -> None:
@@ -26,7 +29,7 @@ def main() -> None:
     ap.add_argument("--stratum", type=Path, default=Path("dataset/B2.h5"))
     ap.add_argument("--q", type=float, default=0.005, help="tail quantile trimmed on each side")
     ap.add_argument("--min-count", type=int, default=20)
-    ap.add_argument("--out", type=Path, default=WINDOWS_CSV)
+    ap.add_argument("--out", type=Path, default=WINDOW_TABLES["b2"])
     args = ap.parse_args()
 
     lengths: dict[tuple[int, int, float], list[float]] = defaultdict(list)
