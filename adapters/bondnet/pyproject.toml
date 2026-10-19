@@ -1,0 +1,19 @@
+[project]
+name = "bond-bench-bondnet-adapter"
+version = "0.1.0"
+description = "BondNet (Zhang & Zeng) bond perception behind the bond-bench external protocol (MIT, isolated env)"
+requires-python = "==3.11.*"
+# Inference needs only torch (RDKit is for Kekulizing aromatic output). The authors used
+# torch 2.5.1 (README), whose torch.load defaults to weights_only=False as
+# evaluate.load_model expects.
+dependencies = [
+    "torch==2.5.1",
+    "numpy<2.3",
+    "scipy",
+    "pyyaml",
+    "tqdm",
+    "rdkit>=2024.3",
+]
+
+[tool.uv]
+package = false

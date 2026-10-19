@@ -3,14 +3,16 @@
 Protocol (one JSON object per line, UTF-8):
 
 input  ``{"structure_id", "atomic_numbers", "positions", "total_charge",
-          "multiplicity", "observation"}``
+          "multiplicity", "observation"[, "contacts"]}``
 output ``{"structure_id", "status", "reason", "atomic_numbers", "bonds",
           "bond_orders", "formal_charges", "implicit_hydrogens",
           "radical_electrons", "runtime_s"[, "edge_pairs", "edge_probs"]}``
 
 The command gets the input and output paths through ``{input}`` and
 ``{output}``. Atom order must be preserved; ``atomic_numbers`` is echoed back
-and checked.
+and checked. ``contacts`` (atom-index pairs of the contact map A(X), as used by
+``canonical-O``) is sent only to methods that set ``send_contacts``: those that
+assign bond orders to a given connectivity rather than perceive it.
 """
 
 from __future__ import annotations
@@ -22,18 +24,21 @@ import subprocess
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 
 from ...data.manifest import REPO_ROOT
+from ..core.geometry import CONTACT_SCALE, contact_map
 from ..core.graph import Graph
 from ..prediction import Prediction, Status
 from ..query import Query
 from .base import Capabilities, Method, register
 
 
-def query_to_json(q: Query) -> dict:
-    return {
+def query_to_json(q: Query, contact_scale: float | None = None) -> dict:
+    """One protocol input line; ``contact_scale`` set adds the contact map."""
+    d = {
         "structure_id": q.structure_id,
         "atomic_numbers": q.atomic_numbers.tolist(),
         "positions": np.round(q.positions, 6).tolist(),
@@ -41,6 +46,9 @@ def query_to_json(q: Query) -> dict:
         "multiplicity": q.multiplicity,
         "observation": str(q.observation),
     }
+    if contact_scale is not None:
+        d["contacts"] = contact_map(q.atomic_numbers, q.positions, contact_scale)[0].tolist()
+    return d
 
 
 def prediction_from_json(d: dict, q: Query) -> Prediction:
@@ -76,6 +84,8 @@ class ExternalMethod(Method):
     family = "external"
     capabilities = Capabilities(stripped_h=True, charged=True, radicals=True, elements=None)
     defaults = {"command": "", "batch_timeout": 3600.0, "cwd": str(REPO_ROOT), "label": ""}
+    #: send the contact map A(X) with each query (params must then include ``contact_scale``)
+    send_contacts: ClassVar[bool] = False
 
     @property
     def tag(self) -> str:
@@ -100,9 +110,10 @@ class ExternalMethod(Method):
     def predict_batch(self, queries: Sequence[Query]) -> list[Prediction]:
         with tempfile.TemporaryDirectory(prefix="bond-bench-") as tmp:
             inp, out = Path(tmp) / "queries.jsonl", Path(tmp) / "predictions.jsonl"
+            scale = self.params.get("contact_scale", CONTACT_SCALE) if self.send_contacts else None
             with inp.open("w") as f:
                 for q in queries:
-                    f.write(json.dumps(query_to_json(q)) + "\n")
+                    f.write(json.dumps(query_to_json(q, scale)) + "\n")
             try:
                 proc = subprocess.run(
                     self.command(inp, out), cwd=self.params["cwd"], capture_output=True, text=True,
@@ -130,29 +141,3 @@ class ExternalMethod(Method):
                 preds.append(Prediction.fail(Status.ERROR, f"bad adapter output: {exc}"))
         return preds
 
-
-@register
-class OpenBabel(ExternalMethod):
-    """Open Babel ConnectTheDots + PerceiveBondOrders (GPL; runs in adapters/openbabel)."""
-
-    name = "openbabel"
-    capabilities = Capabilities(stripped_h=True, charged=True, radicals=False)
-    defaults = {
-        **ExternalMethod.defaults,
-        "command": "uv run --quiet --project adapters/openbabel python adapters/openbabel/run.py {input} {output}",
-    }
-
-    def check_available(self) -> str | None:
-        if not (REPO_ROOT / "adapters" / "openbabel" / "run.py").exists():
-            return "adapters/openbabel missing"
-        return super().check_available()
-
-    def version(self) -> str:
-        try:
-            out = subprocess.run(
-                [*shlex.split(self.params["command"])[:-2], "--version"],
-                cwd=self.params["cwd"], capture_output=True, text=True, timeout=300,
-            )
-            return out.stdout.strip() or "unknown"
-        except (OSError, subprocess.TimeoutExpired):
-            return "unknown"

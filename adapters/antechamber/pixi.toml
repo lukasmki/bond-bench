@@ -1,0 +1,10 @@
+[workspace]
+name = "bond-bench-antechamber-adapter"
+description = "AmberTools antechamber/bondtype behind the bond-bench external protocol (GPL/LGPL, isolated env)"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+
+[dependencies]
+python = "3.12.*"
+ambertools = ">=24"
+rdkit = "*"

@@ -125,7 +125,7 @@ def register(cls):
 
 
 def _load_all() -> None:
-    from . import external, hybrid, optimization, rdkit_determine, rule, wrappers  # noqa: F401
+    from . import adapters, external, hybrid, optimization, rdkit_determine, rule, wrappers  # noqa: F401
 
 
 def parse_value(text: str) -> Any:

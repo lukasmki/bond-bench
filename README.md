@@ -109,8 +109,15 @@ Implemented methods:
 | `canonical-O` | optimization | Algorithm O: contact map A(X), then a lexicographic prior solved exactly with CP-SAT. The `kim2015` preset maximizes ΣB, then minimizes Σ\|q\|. The `atom_penalty` preset (`--param preset=atom_penalty`) minimizes the Wang et al. (2006) atomic penalty scores in `eval/tables/atom_penalties.csv`, then Σ\|q\|. It covers H, C, N, O, F, Si, P, S, Cl, Br and I; molecules with other elements are reported as unsupported. Returns every co-optimal structure; a `prior_tied` flag marks resonance or tautomer ambiguity. |
 | `canonical-R` | rule | Algorithm R: bond-length windows and angle-based hybridization feed a greedy cascade in certainty order. Windows are centred on MMFF94 reference lengths (`scripts/mmff_windows.py`), so no stratum is used; `--param windows=b2` selects windows fitted on B2 instead. Hamming-nearest projection onto 𝒢 follows. |
 | `rdkit-determinebonds` | optimization | RDKit's xyz2mol (Kim & Kim 2015). Requires explicit H. |
-| `openbabel` | external | Open Babel `ConnectTheDots` + `PerceiveBondOrders`. Runs in its own GPL environment in `adapters/openbabel` (`cd adapters/openbabel && uv sync`). |
-| `external` | external | Any program that speaks the JSONL protocol in `eval/methods/external.py`: `--param command='prog {input} {output}'`. |
+| `openbabel` | external | Open Babel `ConnectTheDots` + `PerceiveBondOrders` (GPL-2.0). Adapter `openbabel`. |
+| `antechamber` | optimization | AmberTools antechamber `-j 4` (bondtype; Wang et al. 2006). Finds its own connectivity. Explicit H only; assigns no formal charges, so charged structures need `+project`. Adapter `antechamber` (pixi). |
+| `indigo` | optimization | indigo-bondorder electron assignment (Welsh & Allison 2019, MIT) on the harness contact map. Explicit H only; connected graphs only; H C N O F P S Cl Br. `--param algorithm=fpt\|astar\|local_optimisation`. Adapter `indigo` (pixi, builds C++). |
+| `ball` | optimization | BALL `assign_bond_orders` (AssignBondOrderProcessor, Dehof et al. 2011, LGPL-2.1) on the harness contact map, BALL penalty table. Explicit H only; connected graphs only; no formal charges. `--param strategy=fpt\|a_star\|ilp`. Adapter `ball` (pixi, builds C++, Linux). |
+| `mambax` | ml | Loschen's random forest (`clf.p`, BSD-3) over pairs within 3 Å. Reports `edge_probs`; no formal charges or H counts. Adapter `mambax`. |
+| `yuelbond` | ml | YuelBond edge GNN on heavy atoms; `--param checkpoint=geom_kekulized_3d` (default) or `geom_kekulized_cdg` (trained with 0.2 Å noise). Reports `edge_probs`; no formal charges or H counts. **Upstream has no licence**: code and weights are fetched by `setup.sh`, never shipped. Adapter `yuelbond`. |
+| `bondnet` | ml | BondNet v4 joint PaiNN models (MIT; weights CC BY 4.0): explicit-H or heavy-only model chosen by the observation; `--param seed=42\|43\|44`. Reports `edge_probs`; reads no charge, no formal charges or H counts. Adapter `bondnet`. |
+| `mperformer` | ml | MPerformer (GPL-3.0) on heavy atoms, upstream's thresholds on its continuous heads; predicts formal charges and H counts. Uses the checkpoint's trained charge head (`total_data`): upstream's `predict.py` asks for a head the checkpoint lacks and runs it untrained. Adapter `mperformer` (Uni-Core). |
+| `external` | external | Any program that speaks the JSONL protocol in `eval/methods/external.py`: `--param command='prog {input} {output}'`. Queries carry the contact map as `contacts` when the method sets `send_contacts`. |
 | `+project` | wrapper | Maps an invalid output to the nearest valid structure on the same support. |
 | `+hybrid` | wrapper | Algorithm H: constrained MAP over 𝒢 from the inner method's `edge_probs` (for ML models). |
 
@@ -123,6 +130,27 @@ The shared primitives P1–P6 of `assets/boa_canonical_algorithms.md` are in `sr
 - `canon.py`: equivariant tie-breaking and resonance classes
 
 To add a method, subclass `Method` (in `eval/methods/base.py`), declare its `Capabilities`, implement `predict`, and decorate the class with `@register`. A method with heavy or conflicting dependencies should instead get its own environment under `adapters/<name>/` and subclass `ExternalMethod`.
+
+### Adapters
+
+Published methods with GPL code, PyTorch/Uni-Core models or conda-forge builds run in their own environment under `adapters/<name>/` (uv, or [pixi](https://pixi.sh) for conda-forge). Each `run.py` speaks the JSONL protocol of `eval/methods/external.py` through the helpers in `adapters/_shared/bbadapter.py`. `setup.sh` fetches the pinned upstream commit and checksummed weights into `adapters/<name>/vendor/` (not committed) and builds what needs building:
+
+```bash
+adapters/mambax/setup.sh        # uv; clf.p is in the upstream repo
+adapters/yuelbond/setup.sh      # uv; 4 checkpoints from Zenodo 15353365
+adapters/bondnet/setup.sh       # uv; 310 MB release archive from Zenodo 23080342
+adapters/mperformer/setup.sh    # uv + Uni-Core; 584 MB checkpoint from Google Drive (gdown)
+adapters/indigo/setup.sh        # pixi; builds the pyindigox module
+adapters/ball/setup.sh          # pixi; builds BALL's assign_bond_orders (Linux; long build)
+cd adapters/openbabel && uv sync
+uv run bond-bench methods       # shows what each adapter still needs
+```
+
+`antechamber` needs no setup beyond pixi; its environment is created on first run. The ML adapters run on CUDA when it is available. Adapters that report `edge_probs` (`mambax`, `yuelbond`, `bondnet`) can be decoded with `+hybrid`. Where a model has a 5-class output with an aromatic class, P(aromatic) is split equally between orders 1 and 2. `indigo` and `ball` assign bond orders to a given graph, so they receive the contact map A(X) that `canonical-O` uses (`send_contacts`), and their connectivity errors are those of `canonical-O`. Methods that do not predict formal charges or H counts report none, so their raw outputs are invalid for charged or H-stripped structures; `+project` and `+hybrid` repair them.
+
+Known issues are documented with each adapter: `adapters/README.md` covers the shared conventions and the `+hybrid` charge-separation issue, and `adapters/<name>/README.md` covers upstream bugs, version pins, limits and test status.
+
+Not wrapped: closed or licence-gated tools (IDATM/ChimeraX, SAMSON, Knodle, NAOMI/UNICON, Protoss, MOE, CSD), methods without public code, and cod-tools, which helped select stratum A2. See `assets/bond_order_methods_availability.md`.
 
 Results go to `results/<method_tag>/<stratum>__<obs>.parquet` (predictions) and `.scores.parquet` (per-structure metrics), with a `provenance.json` alongside. `bond-bench score` aggregates them into `results/summary.parquet`, with Wilson 95% intervals for rates and a bootstrap interval for F1.
 

@@ -16,3 +16,7 @@ data/raw/
 
 # Evaluation results
 results/
+
+# Adapter environments and fetched upstream code/weights
+adapters/*/vendor/
+.pixi/

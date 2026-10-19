@@ -1,0 +1,22 @@
+[workspace]
+name = "bond-bench-ball-adapter"
+description = "BALL AssignBondOrderProcessor (Dehof et al. 2011, LGPL-2.1) behind the bond-bench external protocol"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+[dependencies]
+python = "3.12.*"
+cmake = ">=3.21"
+ninja = "*"
+cxx-compiler = "*"
+binutils = "*"  # unprefixed ar/ranlib for static libraries
+bison = "*"
+flex = "*"
+libboost-devel = ">=1.70"
+eigen = ">=3.4"
+qt6-main = ">=6.8"
+lp_solve = "*"  # include/lpsolve/lp_lib.h + liblpsolve55, for --strategy=ilp
+git = "*"
+
+[tasks]
+build = "bash build.sh"

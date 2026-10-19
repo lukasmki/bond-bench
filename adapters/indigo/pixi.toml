@@ -1,0 +1,18 @@
+[workspace]
+name = "bond-bench-indigo-adapter"
+description = "indigo-bondorder (Welsh & Allison 2019, MIT) behind the bond-bench external protocol"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+
+[dependencies]
+# The bundled pybind11 2.2.2 does not compile against Python >= 3.11.
+python = "3.10.*"
+cmake = ">=3.21"
+make = "*"
+cxx-compiler = "*"
+binutils = "*"  # unprefixed ar/ranlib for static libraries
+libboost-headers = ">=1.66"
+git = "*"
+
+[tasks]
+build = "bash build.sh"

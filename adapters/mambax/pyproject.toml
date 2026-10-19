@@ -1,0 +1,18 @@
+[project]
+name = "bond-bench-mambax-adapter"
+version = "0.1.0"
+description = "mambax (Loschen) bond perception behind the bond-bench external protocol (BSD-3, isolated env)"
+# The shipped clf.p was pickled by scikit-learn 0.23.2. Its tree node layout loads
+# in scikit-learn <= 1.2 (1.3 added a node field), which needs Python <= 3.11 and numpy < 2.
+requires-python = "==3.11.*"
+dependencies = [
+    "scikit-learn==1.2.2",
+    "numpy<2",
+    "pandas<2.2",
+    "scipy<1.14",
+    "rdkit>=2024.3",
+    "matplotlib<3.10",
+]
+
+[tool.uv]
+package = false

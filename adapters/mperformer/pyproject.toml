@@ -1,0 +1,24 @@
+[project]
+name = "bond-bench-mperformer-adapter"
+version = "0.1.0"
+description = "MPerformer (Wang et al. 2023) behind the bond-bench external protocol (GPL-3.0, isolated env)"
+requires-python = "==3.11.*"
+dependencies = [
+    "torch==2.5.1",
+    "unicore",
+    "numpy<2",
+    "scipy",
+    "scikit-learn",
+    "pandas",
+    "rdkit>=2024.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# Uni-Core builds without its fused CUDA kernels unless --enable-cuda-ext is passed.
+unicore = { git = "https://github.com/dptech-corp/Uni-Core", rev = "ace6fae1c8479a9751f2bb1e1d6e4047427bc134" }
+
+[tool.uv.extra-build-dependencies]
+unicore = ["torch==2.5.1"]  # same as the runtime pin
