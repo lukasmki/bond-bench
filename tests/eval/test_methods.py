@@ -96,7 +96,7 @@ def test_hybrid_reduces_to_o():
         edges, _ = contact_map(q.atomic_numbers, q.positions)
         allowed = np.ones((len(edges), 4), dtype=bool)
         allowed[:, 0] = False
-        sum_b = prior_objectives("kim2015", len(edges), q.atomic_numbers, None)[0].edge
+        sum_b = prior_objectives("kim2015", edges, q.atomic_numbers)[0].edge
         h = constrained_map(q, edges, sum_b, allowed=allowed)
         o = get_method("canonical-O").predict(q)
         assert same_resonance_class(h.graph, o.graph) and (h.graph.orders.sum() == o.graph.orders.sum())
@@ -166,3 +166,41 @@ def test_external_failure_is_reported(tmp_path):
     m = get_method("external", {"command": f"{sys.executable} -c 'import sys; sys.exit(3)' {{input}} {{output}}"})
     _, q = _query("CCO")
     assert m.predict(q).status is Status.ERROR
+
+
+@pytest.mark.parametrize("smiles,symbol,context", [
+    ("O=[N+]([O-])c1ccccc1", "N", "in nitro"),
+    ("CC(=O)[O-]", "C", "in COO−"),
+    ("[O-][n+]1ccccc1", "N", "in pyridine-1-oxide, etc."),
+    ("[O-][n+]1ccccc1", "O", "in pyridine-1-oxide, etc."),
+    ("CN=[N+]=[N-]", "N", "in N=N=R"),
+    ("[C-]#[N+]C", "C", "in C≡N–R"),
+    ("CS(N)(=O)=O", "S", "bonded to two O(X1) or S(X1)"),
+    ("OP(=O)(O)O", "P", None),  # three O but only one terminal (X1) with explicit H
+    ("CP(=O)([O-])[O-]", "P", "bonded to three O(X1) or S(X1)"),
+])
+def test_aps_contexts(smiles, symbol, context):
+    from rdkit import Chem
+
+    from bond_bench.eval.methods.optimization import aps_contexts
+
+    rec, q = _query(smiles)
+    edges, _ = contact_map(q.atomic_numbers, q.positions)
+    ctx = aps_contexts(q.atomic_numbers, edges)
+    z = Chem.GetPeriodicTable().GetAtomicNumber(symbol)
+    found = set().union(*(ctx[i] for i in range(q.n_atoms) if q.atomic_numbers[i] == z))
+    assert (context in found) if context else not any("O(X1)" in c for c in found)
+
+
+@pytest.mark.parametrize("smiles", SMILES)
+def test_atom_penalty_preset(smiles):
+    rec, q = _query(smiles)
+    pred = get_method("canonical-O", {"preset": "atom_penalty"}).predict(q)
+    assert pred.status is Status.OK
+    assert _smiles_of(q, pred.graph) == rec.smiles
+
+
+def test_atom_penalty_unsupported_elements():
+    _, q = _query("CB(C)C")
+    assert "penalty" in get_method("canonical-O", {"preset": "atom_penalty"}).unsupported_reason(q)
+    assert get_method("canonical-O").unsupported_reason(q) is None

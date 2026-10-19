@@ -73,7 +73,15 @@ uv run bond-bench run openbabel+project --strata A1       # wrappers are appende
 uv run bond-bench run canonical-O --param preset=kim2015 --param c_max=2
 uv run bond-bench score                                    # summary across all results
 uv run bond-bench score --all-subgroups --rescore          # per res_bin / sigma, recomputed
+uv sync --extra plot && uv run bond-bench plot             # matplotlib figures in results/plots/
+uv run bond-bench plot --metric smiles_match taut_pref --format pdf
 ```
+
+`bond-bench plot` writes:
+
+- `strata_<metric>.png`: per-stratum bars for each method, with 95% CIs
+- `noise_c1_<metric>.png`: robustness curves over the C1 σ ladder, plus `noise_onthefly_*` when `--noise` was used
+- `equivariance.png`: violation rates per method
 
 `--obs auto` (the default) follows the manifest's `hydrogens_default`: `Stripped` strata run H-free, `Present` strata run with explicit H, and `Both`/`Present + stripped` strata run both. With `--n`, records are sampled by group, so C1 noise ladders and B5 tautomer groups stay whole.
 
@@ -81,7 +89,7 @@ Implemented methods:
 
 | name | family | notes |
 | --- | --- | --- |
-| `canonical-O` | optimization | Algorithm O: contact map A(X), then a lexicographic prior solved exactly with CP-SAT. The `kim2015` preset maximizes ΣB, then minimizes Σ\|q\|. Returns every co-optimal structure; a `prior_tied` flag marks resonance or tautomer ambiguity. |
+| `canonical-O` | optimization | Algorithm O: contact map A(X), then a lexicographic prior solved exactly with CP-SAT. The `kim2015` preset maximizes ΣB, then minimizes Σ\|q\|. The `atom_penalty` preset (`--param preset=atom_penalty`) minimizes the Wang et al. (2006) atomic penalty scores in `eval/tables/atom_penalties.csv`, then Σ\|q\|. It covers H, C, N, O, F, Si, P, S, Cl, Br and I; molecules with other elements are reported as unsupported. Returns every co-optimal structure; a `prior_tied` flag marks resonance or tautomer ambiguity. |
 | `canonical-R` | rule | Algorithm R: bond-length windows (fitted on B2 by `scripts/fit_windows.py`) and angle-based hybridization feed a greedy cascade in certainty order. Hamming-nearest projection onto 𝒢 follows. |
 | `rdkit-determinebonds` | optimization | RDKit's xyz2mol (Kim & Kim 2015). Requires explicit H. |
 | `openbabel` | external | Open Babel `ConnectTheDots` + `PerceiveBondOrders`. Runs in its own GPL environment in `adapters/openbabel` (`cd adapters/openbabel && uv sync`). |

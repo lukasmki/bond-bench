@@ -51,6 +51,11 @@ dependencies = [
     { name = "tblite" },
 ]
 
+[package.optional-dependencies]
+plot = [
+    { name = "matplotlib" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -62,6 +67,7 @@ requires-dist = [
     { name = "fastexcel", specifier = ">=0.21.0" },
     { name = "gemmi", specifier = ">=0.7.5" },
     { name = "h5py", specifier = ">=3.16.0" },
+    { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.11.2" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "ortools", specifier = ">=9.15.6755" },
     { name = "polars", specifier = ">=2.0.0" },
@@ -69,6 +75,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "tblite", specifier = ">=0.7.0" },
 ]
+provides-extras = ["plot"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]

@@ -52,3 +52,18 @@ def test_timeout_pool_kills_and_replaces_workers(records):
     assert [p.status for p in hung] == [Status.TIMEOUT] * len(queries)
     ok = Runner("canonical-O", {}, workers=2, timeout=60).predict(queries)
     assert all(p.status is Status.OK for p in ok)
+
+
+def test_plot_smoke(tmp_path, records, manifest):
+    import pytest
+
+    pytest.importorskip("matplotlib")
+    from bond_bench.eval.plots import plot_all
+
+    data = tmp_path / "dataset"
+    write_stratum(data / "C1.h5", records, {"stratum_id": "C1"})
+    run("canonical-O", ["C1"], data, manifest, results_dir=tmp_path / "results", n=3, equivariance=2)
+    paths = plot_all(tmp_path / "results", metrics=["smiles_match"])
+    names = {p.name for p in paths}
+    assert {"strata_smiles_match.png", "equivariance.png"} <= names
+    assert all(p.stat().st_size > 0 for p in paths)

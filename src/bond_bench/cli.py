@@ -1,4 +1,4 @@
-"""Command-line interface: ``bond-bench build|validate|info|methods|run|score``."""
+"""Command-line interface: ``bond-bench build|validate|info|methods|run|score|plot``."""
 
 from __future__ import annotations
 
@@ -138,6 +138,14 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plot(args: argparse.Namespace) -> int:
+    from .eval.plots import plot_all
+
+    for path in plot_all(args.results, args.plot_dir, args.metric, args.format):
+        print(path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bond-bench")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -185,6 +193,13 @@ def build_parser() -> argparse.ArgumentParser:
     score.add_argument("--rescore", action="store_true", help="recompute scores from stored predictions")
     score.add_argument("--no-ci", action="store_true")
     score.set_defaults(func=cmd_score)
+
+    plot = sub.add_parser("plot", help="plot results with matplotlib (needs: uv sync --extra plot)")
+    plot.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
+    plot.add_argument("--plot-dir", type=Path, default=None, help="default: <results>/plots")
+    plot.add_argument("--metric", nargs="*", default=None, help="default: smiles_match valid f1_macro")
+    plot.add_argument("--format", default="png", choices=["png", "pdf", "svg"])
+    plot.set_defaults(func=cmd_plot)
     return parser
 
 
