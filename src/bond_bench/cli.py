@@ -1,4 +1,4 @@
-"""Command-line interface: ``bond-bench build|validate|info|methods|run|score|plot``."""
+"""Command-line interface: ``bond-bench build|pull|validate|info|methods|run|score|plot``."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import polars as pl
 from .data.builders.registry import get_builder, is_implemented
 from .data.download import default_cache_dir
 from .data.manifest import DEFAULT_MANIFEST, REPO_ROOT, load_manifest
+from .data.release import RELEASE_REPO, RELEASE_TAG
 from .data.store import write_index
 from .data.validate import validate_index, validate_stratum
 
@@ -36,6 +37,19 @@ def cmd_build(args: argparse.Namespace) -> int:
         )
         builder.build()
     write_index(args.out)
+    return 0
+
+
+def cmd_pull(args: argparse.Namespace) -> int:
+    from .data.release import pull
+
+    try:
+        status = pull(args.out, strata=args.strata or None, repo=args.repo, tag=args.tag, force=args.force)
+    except (FileExistsError, ValueError, RuntimeError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    for name, state in sorted(status.items()):
+        print(f"{name:20s} {state}")
     return 0
 
 
@@ -159,6 +173,13 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--seed", type=int, default=0)
     build.add_argument("--cache-dir", type=Path, default=default_cache_dir())
     build.set_defaults(func=cmd_build)
+
+    pull = sub.add_parser("pull", help="download the prebuilt dataset from a GitHub release")
+    pull.add_argument("strata", nargs="*", help="stratum ids (default: all released strata)")
+    pull.add_argument("--tag", default=RELEASE_TAG, help="release tag (default: %(default)s)")
+    pull.add_argument("--repo", default=RELEASE_REPO, help="GitHub owner/name (default: %(default)s)")
+    pull.add_argument("--force", action="store_true", help="overwrite local files that differ from the release")
+    pull.set_defaults(func=cmd_pull)
 
     validate = sub.add_parser("validate", help="check built stratum files")
     validate.add_argument("--sample", type=int, default=200, help="records per stratum to check chemically")

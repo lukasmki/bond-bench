@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -19,6 +20,19 @@ from .manifest import REPO_ROOT
 log = logging.getLogger(__name__)
 
 USER_AGENT = "bond-bench/0.1 (+https://github.com/lukasmki/bond-bench)"
+
+
+class _NoCrossHostAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """Drop ``Authorization`` when a redirect leaves the original host (e.g. GitHub -> asset storage)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(_NoCrossHostAuthRedirect)
 
 
 def default_cache_dir() -> Path:
@@ -33,7 +47,9 @@ def sha256sum(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def fetch(url: str, dest: Path, retries: int = 4, timeout: float = 120.0) -> Path:
+def fetch(
+    url: str, dest: Path, retries: int = 4, timeout: float = 120.0, headers: dict[str, str] | None = None
+) -> Path:
     """Download ``url`` to ``dest`` unless it already exists.
 
     Writes a ``<dest>.sha256`` sidecar so builds can record source checksums.
@@ -43,10 +59,10 @@ def fetch(url: str, dest: Path, retries: int = 4, timeout: float = 120.0) -> Pat
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as resp, open(tmp, "wb") as out:
+            with _OPENER.open(request, timeout=timeout) as resp, open(tmp, "wb") as out:
                 shutil.copyfileobj(resp, out, length=1 << 20)
             break
         except urllib.error.HTTPError as exc:
@@ -66,14 +82,14 @@ def fetch(url: str, dest: Path, retries: int = 4, timeout: float = 120.0) -> Pat
 
 
 def fetch_many(
-    items: Iterable[tuple[str, Path]], workers: int = 8
+    items: Iterable[tuple[str, Path]], workers: int = 8, headers: dict[str, str] | None = None
 ) -> dict[Path, Exception | None]:
     """Fetch (url, dest) pairs concurrently. Returns the error (or None) per dest."""
 
     def one(item: tuple[str, Path]) -> tuple[Path, Exception | None]:
         url, dest = item
         try:
-            fetch(url, dest)
+            fetch(url, dest, headers=headers)
             return dest, None
         except Exception as exc:  # noqa: BLE001 - report per-item failures
             return dest, exc

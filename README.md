@@ -7,6 +7,23 @@ A benchmark dataset and evaluation harness for bond order assignment methods
 - a comprehensive dataset for bond order assignment
 - an efficient and unified harness for evaluation of bond order assignment methods
 
+## Getting the dataset
+
+The prebuilt dataset is published as a GitHub release (tag `dataset-v<schema version>`). Pull it instead of rebuilding:
+
+```bash
+uv sync
+uv run bond-bench pull                 # every stratum, reports and index.parquet into dataset/
+uv run bond-bench pull A1 B5           # selected strata only (index.parquet is regenerated)
+uv run bond-bench validate
+```
+
+Every file is checked against the release's `SHA256SUMS`. Files that are already up to date are skipped. Local files that differ from the release, such as your own rebuilds, are kept unless you pass `--force`. While the repository is private, `pull` needs a token: it uses `GITHUB_TOKEN`, `GH_TOKEN` or your `gh auth login`. Use `--tag` to pull another release.
+
+To publish a new dataset release after a full build, run `uv run python scripts/publish_dataset.py`. It stages the assets in `build/release/` and prints the `gh release create` command. It refuses dev builds made with `--n`.
+
+The dataset is derived from third-party sources with their own licenses; see [LICENSE.md](LICENSE.md).
+
 ## Building the dataset
 
 The dataset is defined by `assets/benchmark_strata_manifest.csv`. Each stratum is built by its own builder into `dataset/<stratum_id>.h5`:
