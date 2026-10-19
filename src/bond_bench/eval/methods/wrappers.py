@@ -71,8 +71,7 @@ class Projected(Wrapper):
     def capabilities(self):  # type: ignore[override]
         return self.inner.capabilities
 
-    def predict(self, query: Query) -> Prediction:
-        pred = self.inner.predict(query)
+    def finish(self, query: Query, pred: Prediction) -> Prediction:
         if pred.status is not Status.OK or pred.graph is None:
             return pred
         g = pred.graph

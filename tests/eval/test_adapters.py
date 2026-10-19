@@ -174,3 +174,35 @@ def test_forwarded_options(tmp_path):
     pred = Echo(mode="fast").predict(q)
     assert pred.status is Status.OK and pred.flags == ["fast"]
     assert Echo(mode="fast").version() == "echo fast"
+
+
+@pytest.mark.parametrize("spec", ["counting", "counting+project"])
+def test_runner_batches_adapters(tmp_path, monkeypatch, spec):
+    """Adapters (whatever their family) and wrappers around them get one process per batch."""
+    from bond_bench.eval.methods import base
+    from bond_bench.eval.runner import Runner
+
+    log = tmp_path / "calls.log"
+    script = tmp_path / "count.py"
+    script.write_text(textwrap.dedent(f"""
+        import json, sys
+        open({str(log)!r}, "a").write("call\\n")
+        src, dst = sys.argv[1:3]
+        with open(src) as f, open(dst, "w") as out:
+            for line in f:
+                q = json.loads(line)
+                out.write(json.dumps({{"structure_id": q["structure_id"], "status": "ok",
+                                      "atomic_numbers": q["atomic_numbers"], "bonds": [], "bond_orders": []}}) + "\\n")
+    """))
+
+    class Counting(ExternalMethod):
+        name = "counting"
+        family = "ml"
+        defaults = {**ExternalMethod.defaults, "command": f"{sys.executable} {script} {{input}} {{output}}"}
+
+    base._load_all()
+    monkeypatch.setitem(base.METHODS, "counting", Counting)
+    queries = [_query(s)[1] for s in ("CO", "CCO", "CCCO")]
+    preds = Runner(spec, {}).predict(queries)
+    assert len(preds) == 3 and all(p.status in (Status.OK, Status.INFEASIBLE) for p in preds)
+    assert log.read_text().count("call") == 1

@@ -105,11 +105,29 @@ class Wrapper(Method):
     def unsupported_reason(self, query: Query) -> str | None:
         return self.inner.unsupported_reason(query)
 
+    @abstractmethod
+    def finish(self, query: Query, pred: Prediction) -> Prediction:
+        """Post-process the inner method's prediction for ``query``."""
+
+    def predict(self, query: Query) -> Prediction:
+        return self.finish(query, self.inner.predict(query))
+
+    def predict_batch(self, queries: Sequence[Query]) -> list[Prediction]:
+        # the inner method sees the whole batch (one adapter process per batch)
+        return [self.finish(q, p) for q, p in zip(queries, self.inner.predict_batch(queries))]
+
     def version(self) -> str:
         return self.inner.version()
 
     def provenance(self) -> dict[str, Any]:
         return {**super().provenance(), "inner": self.inner.provenance()}
+
+
+def base_method(method: Method) -> Method:
+    """The innermost method of a ``name+wrapper...`` composite."""
+    while isinstance(method, Wrapper):
+        method = method.inner
+    return method
 
 
 METHODS: dict[str, type[Method]] = {}

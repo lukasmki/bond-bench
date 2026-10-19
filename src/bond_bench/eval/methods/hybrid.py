@@ -79,8 +79,7 @@ class Hybrid(Wrapper):
     family = "hybrid"
     defaults = {"top_k": 16, "alpha": 0.01, "charge_penalty": 0.0, "table": "octet", "c_max": 1}
 
-    def predict(self, query: Query) -> Prediction:
-        inner = self.inner.predict(query)
+    def finish(self, query: Query, inner: Prediction) -> Prediction:
         if inner.status is not Status.OK or inner.edge_probs is None:
             if inner.status is Status.OK:
                 return Prediction.fail(Status.ERROR, f"{self.inner.name} reports no edge probabilities")

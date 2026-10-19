@@ -33,7 +33,8 @@ from ..data.schema import MoleculeRecord
 from ..data.store import StratumReader
 from .core.canon import same_resonance_class, wl_colors
 from .metrics import grade
-from .methods.base import Method, get_method
+from .methods.base import Method, base_method, get_method
+from .methods.external import ExternalMethod
 from .prediction import Prediction, Status, from_row, to_row
 from .query import Observation, Query, random_euclidean
 
@@ -198,7 +199,7 @@ class Runner:
     def predict(self, queries: Sequence[Query]) -> list[Prediction]:
         if not queries:
             return []
-        if self.method.family == "external":
+        if isinstance(base_method(self.method), ExternalMethod):  # batched: one adapter process per batch
             return self._predict_external(queries)
         if self.timeout is None and self.workers <= 1:
             return [_timed(self.method, q) for q in queries]
