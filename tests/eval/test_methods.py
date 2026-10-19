@@ -1,0 +1,168 @@
+import sys
+import textwrap
+
+import numpy as np
+import pytest
+
+from bond_bench.eval.core.canon import same_resonance_class
+from bond_bench.eval.core.geometry import contact_map
+from bond_bench.eval.core.graph import Graph
+from bond_bench.eval.core.validity import is_valid
+from bond_bench.eval.methods.base import get_method
+from bond_bench.eval.methods.hybrid import constrained_map, graph_from_argmax
+from bond_bench.eval.methods.optimization import prior_objectives
+from bond_bench.eval.metrics import graph_smiles
+from bond_bench.eval.prediction import Status
+from bond_bench.eval.query import Observation, Query, random_euclidean
+
+from ..conftest import embedded_record
+
+SMILES = ["CC(=O)Nc1ccc(O)cc1", "C[N+](C)(C)CC(=O)[O-]", "O=[N+]([O-])c1ccccc1", "c1ccncc1", "CS(N)(=O)=O", "C#CC=C"]
+
+
+def _query(smiles, obs=Observation.EXPLICIT_H):
+    rec = embedded_record(smiles, smiles)
+    return rec, Query.from_record(rec, obs)
+
+
+def _smiles_of(query, g):
+    return graph_smiles(query.atomic_numbers, query.positions, g, query.total_charge)
+
+
+@pytest.mark.parametrize("smiles", SMILES)
+def test_canonical_o_recovers_label(smiles):
+    rec, q = _query(smiles)
+    pred = get_method("canonical-O").predict(q)
+    assert pred.status is Status.OK
+    assert is_valid(q.atomic_numbers, q.total_charge, pred.graph)
+    assert _smiles_of(q, pred.graph) == rec.smiles
+
+
+@pytest.mark.parametrize("smiles", SMILES)
+def test_canonical_r_is_sound_and_correct_on_clean_geometry(smiles):
+    rec, q = _query(smiles)
+    pred = get_method("canonical-R").predict(q)
+    assert pred.status is Status.OK
+    assert is_valid(q.atomic_numbers, q.total_charge, pred.graph)
+    assert same_resonance_class(pred.graph, Graph.from_record(rec))
+
+
+def test_query_hides_label():
+    rec, q = _query("CC(=O)[O-]")
+    assert not hasattr(q, "bonds") and not hasattr(q, "formal_charges")
+    s = Query.from_record(rec, Observation.STRIPPED)
+    assert (s.atomic_numbers != 1).all()
+    stripped = rec.strip_hydrogens()
+    with pytest.raises(ValueError):
+        Query.from_record(stripped, Observation.EXPLICIT_H)
+
+
+def test_capabilities_gate_unsupported():
+    _, q = _query("CCO", Observation.STRIPPED)
+    assert get_method("rdkit-determinebonds").unsupported_reason(q) == "stripped hydrogens"
+    assert get_method("canonical-O").unsupported_reason(q) is None
+
+
+def test_rdkit_adapter():
+    rec, q = _query("CC(=O)Nc1ccc(O)cc1")
+    pred = get_method("rdkit-determinebonds").predict(q)
+    assert pred.status is Status.OK and _smiles_of(q, pred.graph) == rec.smiles
+
+
+@pytest.mark.parametrize("method", ["canonical-O", "canonical-R"])
+def test_equivariance(method):
+    m = get_method(method)
+    rng = np.random.default_rng(3)
+    for smiles in SMILES:
+        _, q = _query(smiles)
+        perm = rng.permutation(q.n_atoms)
+        rot, t = random_euclidean(rng)
+        base = m.predict(q).graph
+        moved = m.predict(q.transformed(perm, rot, t)).graph
+        assert moved == base.permuted(perm), smiles
+
+
+def _one_hot_logp(edges, target: dict, sharp=5.0):
+    w = np.full((len(edges), 4), -sharp)
+    for e, (i, j) in enumerate(edges.tolist()):
+        w[e, target.get((i, j), 0)] = 0.0
+    return w
+
+
+def test_hybrid_reduces_to_o():
+    """H with w(0) = −∞ on A(X) and O's (single-stage) prior equals O."""
+    for smiles in ["C=CC=O", "c1ccncc1", "CC#N"]:
+        _, q = _query(smiles)
+        edges, _ = contact_map(q.atomic_numbers, q.positions)
+        allowed = np.ones((len(edges), 4), dtype=bool)
+        allowed[:, 0] = False
+        sum_b = prior_objectives("kim2015", len(edges), q.atomic_numbers, None)[0].edge
+        h = constrained_map(q, edges, sum_b, allowed=allowed)
+        o = get_method("canonical-O").predict(q)
+        assert same_resonance_class(h.graph, o.graph) and (h.graph.orders.sum() == o.graph.orders.sum())
+
+
+def test_hybrid_unconstrained_equals_argmax_when_valid():
+    rec, q = _query("CC(=O)Nc1ccc(O)cc1")
+    edges, _ = contact_map(q.atomic_numbers, q.positions)
+    logp = _one_hot_logp(edges, Graph.from_record(rec).bond_dict())
+    h = constrained_map(q, edges, logp)
+    assert h.graph == graph_from_argmax(q.n_atoms, edges, np.exp(logp))
+    assert h.graph == Graph.from_record(rec)
+    assert h.extra["gap"] > 0
+
+
+def test_hybrid_repairs_invalid_argmax():
+    """Entrywise argmax that mixes resonance forms (both N–O double) is projected onto 𝒢."""
+    rec, q = _query("C[N+](=O)[O-]")
+    edges, _ = contact_map(q.atomic_numbers, q.positions)
+    logp = _one_hot_logp(edges, Graph.from_record(rec).bond_dict(), sharp=10.0)
+    for e, (i, j) in enumerate(edges.tolist()):
+        if {int(q.atomic_numbers[i]), int(q.atomic_numbers[j])} == {7, 8}:
+            logp[e, 1], logp[e, 2] = -1.0, 0.0  # the model prefers N=O on both oxygens
+    argmax = graph_from_argmax(q.n_atoms, edges, np.exp(logp))
+    assert not is_valid(q.atomic_numbers, q.total_charge, argmax)
+    h = constrained_map(q, edges, logp)
+    assert is_valid(q.atomic_numbers, q.total_charge, h.graph)
+    assert same_resonance_class(h.graph, Graph.from_record(rec))
+    assert len(h.alternatives) == 2  # the two nitro resonance forms
+
+
+def test_projected_wrapper_and_tags():
+    m = get_method("canonical-O+project")
+    assert m.tag == "canonical-O+project"
+    _, q = _query("CC(=O)[O-]")
+    assert m.predict(q).status is Status.OK
+    assert get_method("canonical-O", {"preset": "kim2015", "c_max": 2}).tag == "canonical-O@c_max=2"
+    with pytest.raises(KeyError):
+        get_method("nope")
+
+
+ECHO_ADAPTER = textwrap.dedent("""
+    import json, sys
+    src, dst, mode = sys.argv[1:4]
+    with open(src) as f, open(dst, "w") as out:
+        for line in f:
+            q = json.loads(line)
+            z = q["atomic_numbers"][::-1] if mode == "reverse" else q["atomic_numbers"]
+            out.write(json.dumps({"structure_id": q["structure_id"], "status": "ok", "atomic_numbers": z,
+                                  "bonds": [], "bond_orders": []}) + "\\n")
+""")
+
+
+@pytest.mark.parametrize("mode,expected", [("echo", Status.OK), ("reverse", Status.ERROR)])
+def test_external_protocol(tmp_path, mode, expected):
+    script = tmp_path / "adapter.py"
+    script.write_text(ECHO_ADAPTER)
+    m = get_method("external", {"command": f"{sys.executable} {script} {{input}} {{output}} {mode}"})
+    _, q = _query("CC(=O)O")
+    preds = m.predict_batch([q, q])
+    assert [p.status for p in preds] == [expected, expected]
+    if expected is Status.OK:
+        assert len(preds[0].graph.bonds) == 0
+
+
+def test_external_failure_is_reported(tmp_path):
+    m = get_method("external", {"command": f"{sys.executable} -c 'import sys; sys.exit(3)' {{input}} {{output}}"})
+    _, q = _query("CCO")
+    assert m.predict(q).status is Status.ERROR

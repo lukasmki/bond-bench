@@ -1,0 +1,33 @@
+[project]
+name = "bond-bench"
+version = "0.1.0"
+description = "Benchmark dataset and evaluation harness for bond order assignment"
+readme = "README.md"
+authors = [
+    { name = "lukasmki", email = "lukasarus@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ase>=3.29.0",
+    "fastexcel>=0.21.0",
+    "gemmi>=0.7.5",
+    "h5py>=3.16.0",
+    "numpy>=2.5.4",
+    "ortools>=9.15.6755",
+    "polars>=2.0.0",
+    "rdkit>=2026.9.1",
+    "scipy>=1.18.1",
+    "tblite>=0.7.0",
+]
+
+[project.scripts]
+bond-bench = "bond_bench:main"
+
+[build-system]
+requires = ["uv_build>=0.9.9,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

@@ -1,0 +1,54 @@
+# Named methods in the bond-order-assignment review: references and code availability
+
+Source: bond_order_assignment_review.md. All 37 DOIs in the review were resolved via Crossref on 2026-10-19; each matched the stated first author, year and topic.
+Basis column: **Verified** = availability confirmed from the paper or repository page during this check; **Prior knowledge** = well-known distribution, not re-checked here; **Not checked / none found** = no public code located.
+
+| # | Method | Family | Reference | DOI | Code/models available? | Source / licence | Basis |
+|---|---|---|---|---|---|---|---|
+| 1 | IDATM | Rule-based geometric | Meng & Lewis 1991, J Comput Chem | [10.1002/jcc.540120716](https://doi.org/10.1002/jcc.540120716) | Yes (as a built-in) | Atom typing in UCSF Chimera / ChimeraX (RBVI); no standalone package | Prior knowledge |
+| 2 | Baber–Hodgkin CSD connectivity | Rule-based geometric | Baber & Hodgkin 1992, JCICS | [10.1021/ci00009a001](https://doi.org/10.1021/ci00009a001) | No public code | Built for CSD processing; not released | Prior knowledge |
+| 3 | Lang internal-coordinate method | Rule-based geometric | Lang et al. 1992, Anal Chim Acta | [10.1016/0003-2670(92)85034-4](https://doi.org/10.1016/0003-2670(92)85034-4) | No public code found | — | Not checked |
+| 4 | BALI | Rule-based geometric | Hendlich 1997, JCICS | [10.1021/ci9603487](https://doi.org/10.1021/ci9603487) | No standalone release found | Used internally for PDB ligand annotation (Relibase era) | Not checked |
+| 5 | I-interpret | Rule-based geometric | Zhao et al. 2007, JCIM | [10.1021/ci700028w](https://doi.org/10.1021/ci700028w) | Web server (stated in paper); current status unknown | http://www.sioc-ccbg.ac.cn/software/I-interpret/ | Verified (paper URL); live status not checked |
+| 6 | Zhang 2012 rule-based perceiver (hard/length/conjugation rules) | Rule-based geometric | Zhang et al. 2012, J Cheminform | [10.1186/1758-2946-4-26](https://doi.org/10.1186/1758-2946-4-26) | No public code found | Open-access paper only | Searched; none found |
+| 7 | UFF structure perception (SAMSON) | Rule-based geometric | Artemova, Jaillet & Redon 2016, J Comput Chem | [10.1002/jcc.24309](https://doi.org/10.1002/jcc.24309) | Yes, binary (closed source) | 'Universal force field' extension for SAMSON (OneAngstrom); needs a free SAMSON account | Verified |
+| 8 | Open Babel bond perception | Rule-based geometric + valence fix | O'Boyle et al. 2011, J Cheminform | [10.1186/1758-2946-3-33](https://doi.org/10.1186/1758-2946-3-33) | Yes, open source | github.com/openbabel/openbabel (GPL-2.0) | Prior knowledge |
+| 9 | Maximum weighted matching (Labute) | Global optimization | Labute 2005, JCIM | [10.1021/ci049915d](https://doi.org/10.1021/ci049915d) | Commercial only | Implemented in MOE (Chemical Computing Group) | Prior knowledge |
+| 10 | Octet ILP (Froeyen) | Global optimization | Froeyen & Herdewijn 2005, JCIM | [10.1021/ci049645z](https://doi.org/10.1021/ci049645z) | No public code found | Paper uses an external ILP solver | Not checked |
+| 11 | Antechamber bond-type perception (bondtype) | Global optimization | Wang et al. 2006, J Mol Graph Model | [10.1016/j.jmgm.2005.12.005](https://doi.org/10.1016/j.jmgm.2005.12.005) | Yes, open source | AmberTools (antechamber/bondtype); ambermd.org | Prior knowledge |
+| 12 | Exact A* / ILP / FPT bond-order solvers (Dehof) | Global optimization | Dehof et al. 2011, Bioinformatics | [10.1093/bioinformatics/btq718](https://doi.org/10.1093/bioinformatics/btq718) | Yes, open source | BALL library / BALLView (AssignBondOrderProcessor); github.com/BALL-Project/ball | Prior knowledge; Welsh 2019 confirms the A* method is in BALL |
+| 13 | Treewidth-bounded bond-type algorithms (Böcker) | Global optimization (theory) | Böcker et al. 2009 (CPM, LNCS); 2011, Theor Comput Sci | [10.1007/978-3-642-02882-3_30](https://doi.org/10.1007/978-3-642-02882-3_30) ; [10.1016/j.tcs.2010.12.063](https://doi.org/10.1016/j.tcs.2010.12.063) | No public code found | Algorithmic papers | Not checked |
+| 14 | Electron-position scoring, local / A* / FPT (Welsh–Allison) | Global optimization | Welsh & Allison 2019, J Cheminform | [10.1186/s13321-019-0340-0](https://doi.org/10.1186/s13321-019-0340-0) | Yes, open source | github.com/allison-group/indigo-bondorder (C++/Boost with pybind11 Python bindings) | Verified |
+| 15 | xyz2mol (Kim–Kim algorithm) | Global optimization | Kim & Kim 2015, Bull Korean Chem Soc | [10.1002/bkcs.10334](https://doi.org/10.1002/bkcs.10334) | Yes, open source | github.com/jensengroup/xyz2mol; also RDKit rdDetermineBonds / DetermineBonds | Prior knowledge; RDKit link confirmed by BondNet README |
+| 16 | NAOMI (incl. PDB reader) | Hybrid geometry + validity | Urbaczek et al. 2011; 2012/13, JCIM | [10.1021/ci200324e](https://doi.org/10.1021/ci200324e) ; [10.1021/ci300358c](https://doi.org/10.1021/ci300358c) | Binary; free academic licence | NAOMI ChemBio Suite, ZBH Hamburg (software.zbh.uni-hamburg.de); commercial licence via BioSolveIT | Verified |
+| 17 | Protoss | Hybrid (protonation/tautomer layer) | Bietz et al. 2014, J Cheminform | [10.1186/1758-2946-6-12](https://doi.org/10.1186/1758-2946-6-12) | Web server + REST API; standalone binary on licence | proteins.plus (free); NAOMI ChemBio Suite | Verified |
+| 18 | Fast approximate polycyclic bond orders (Trepalin) | Global optimization (approximate) | Trepalin et al. 2019, J Mol Graph Model | [10.1016/j.jmgm.2018.10.010](https://doi.org/10.1016/j.jmgm.2018.10.010) | No public code found | Closed-access paper; companion data in Data in Brief 2018 | Searched; none found |
+| 19 | Knodle | Machine learning (SVM) | Kadukova & Grudinin 2016, JCIM | [10.1021/acs.jcim.5b00512](https://doi.org/10.1021/acs.jcim.5b00512) | Yes, binaries with trained models | team.inria.fr/nano-d/software/knodle (Linux v0.9; macOS/Linux v0.3); not open source | Verified |
+| 20 | ML bond perception from SDF bond blocks (Loschen; repo 'mamba') | Machine learning (RF/GBM) | Loschen 2018, ChemRxiv preprint | [10.26434/chemrxiv.7403630.v2](https://doi.org/10.26434/chemrxiv.7403630.v2) | Yes, code | github.com/CHLoschen/mamba (RDKit, scikit-learn, pandas) | Verified (paper URL); repo contents not inspected |
+| 21 | Bond-level HIP-NN (continuous NBO bond orders) | ML (quantum bond indices, not Lewis) | Magedov et al. 2021, J Appl Phys | [10.1063/5.0016011](https://doi.org/10.1063/5.0016011) | Framework open source; trained bond-order model not confirmed | hippynn, github.com/lanl/hippynn | Prior knowledge |
+| 22 | MiDi | ML (joint generative model) | Vignac et al. 2023, ECML PKDD | [10.1007/978-3-031-43415-0_33](https://doi.org/10.1007/978-3-031-43415-0_33) | Yes, open source | github.com/cvignac/MiDi | Prior knowledge |
+| 23 | MPerformer | ML (SE(3)-Transformer) | Wang F. et al. 2023, CIKM | [10.1145/3583780.3614974](https://doi.org/10.1145/3583780.3614974) | Yes, official code (plus demo) | github.com/FanmengWang/MPerformer | Verified; whether checkpoints are included not checked |
+| 24 | YuelBond | ML (edge-centric GNN) | Wang & Dokholyan 2026, JCIM (bioRxiv 2025.05.06.652517) | [10.1021/acs.jcim.5c03052](https://doi.org/10.1021/acs.jcim.5c03052) | Yes, code + test data | github.com/dokhlab/yuel_bond (mirror github.com/hust220/yuel_bond; earlier bitbucket.org/dokhlab/yuel_bond) | Verified |
+| 25 | BondNet (bond perception; Zhang & Zeng) | ML (PaiNN, two heads) | Zhang 2026, ChemRxiv preprint | [10.26434/chemrxiv.15008897/v1](https://doi.org/10.26434/chemrxiv.15008897/v1) | Code public; checkpoints pending | github.com/zxc8848/BondNet; README Zenodo DOI is still a placeholder | Verified |
+| 26 | CSD structure-deduction pipeline | Inorganic/crystallographic | Bruno et al. 2011, Acta Cryst B | [10.1107/s0108768111024608](https://doi.org/10.1107/s0108768111024608) | Commercial only | CCDC CSD software / CSD Python API (licence) | Prior knowledge |
+| 27 | cell2mol | Inorganic/crystallographic | Vela et al. 2022, npj Comput Mater | [10.1038/s41524-022-00874-9](https://doi.org/10.1038/s41524-022-00874-9) | Yes, open source (GPL-3.0) | github.com/lcmd-epfl/cell2mol; Zenodo releases; data on Materials Cloud | Verified |
+| 28 | COD chemical-entity workflow (cif-perceive-chemistry, cod-tools) | Inorganic/crystallographic | Vaitkus et al. 2023, J Cheminform | [10.1186/s13321-023-00780-2](https://doi.org/10.1186/s13321-023-00780-2) | Yes, open source | cif-perceive-chemistry v0.4.0: doi:10.5281/zenodo.7510339; cod-tools (LGPLv3): svn://www.crystallography.net/cod-tools; results at molecules.crystallography.net | Verified |
+| 29 | Graph-isomorphism cross-check (COD) | Inorganic/crystallographic (validation) | Merkys et al. 2023, J Cheminform | [10.1186/s13321-023-00692-1](https://doi.org/10.1186/s13321-023-00692-1) | Likely part of cod-tools | Not confirmed separately | Not checked |
+| 30 | xyz2mol for transition-metal complexes (xyz2mol_tm) | Inorganic (TMC) | Rasmussen et al. 2025, J Cheminform | [10.1186/s13321-025-01008-1](https://doi.org/10.1186/s13321-025-01008-1) | Yes, code + SMILES datasets | github.com/jensengroup/xyz2mol_tm; Figshare collection | Verified |
+| 31 | Hückel–Lewis projection (HuLiS) | Resonance tie-breaking | Carissan et al. 2008, J Phys Chem A | [10.1021/jp803813e](https://doi.org/10.1021/jp803813e) | Free program (HuLiS) | HuLiS (Java), distributed by the authors | Prior knowledge |
+
+## Other cited resources (not bond-order methods)
+
+| Item | Type | Reference | DOI | Availability |
+|---|---|---|---|---|
+| Mayer bond order | Concept (continuous bond index) | Mayer 1986, Int J Quantum Chem | [10.1002/qua.560290320](https://doi.org/10.1002/qua.560290320) | Implemented in many QM codes |
+| Cordero covalent radii | Reference data | Cordero et al. 2008, Dalton Trans | [10.1039/b801115j](https://doi.org/10.1039/b801115j) | Tables in paper; used by xyz2mol/RDKit |
+| GEOM | Dataset | Axelrod & Gómez-Bombarelli 2022, Sci Data | [10.1038/s41597-022-01288-4](https://doi.org/10.1038/s41597-022-01288-4) | Openly downloadable |
+| Tautomerism review | Background | Sayle 2010, J Comput-Aided Mol Des | [10.1007/s10822-010-9329-5](https://doi.org/10.1007/s10822-010-9329-5) | n/a |
+
+## Notes
+
+- The name BondNet is also used by an unrelated bond-dissociation-energy GNN (Wen et al. 2021). Cite the bond-perception BondNet by its ChemRxiv DOI.
+- The BondNet README links checkpoints to a Zenodo record whose DOI is still a placeholder, so trained weights may not be downloadable yet.
+- I-interpret's web address comes from the 2007 paper. Whether the server is still online was not checked.
+- The MiDi, HIP-NN, BALL, Open Babel, AmberTools, xyz2mol, IDATM/ChimeraX and HuLiS entries come from prior knowledge. Confirm the repositories before citing them in a publication.
