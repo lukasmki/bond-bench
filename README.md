@@ -133,20 +133,9 @@ To add a method, subclass `Method` (in `eval/methods/base.py`), declare its `Cap
 
 ### Adapters
 
-Published methods with GPL code, PyTorch/Uni-Core models or conda-forge builds run in their own environment under `adapters/<name>/` (uv, or [pixi](https://pixi.sh) for conda-forge). Each `run.py` speaks the JSONL protocol of `eval/methods/external.py` through the helpers in `adapters/_shared/bbadapter.py`. `setup.sh` fetches the pinned upstream commit and checksummed weights into `adapters/<name>/vendor/` (not committed) and builds what needs building:
+Published methods with GPL code, PyTorch/Uni-Core models or conda-forge builds run in their own environment under `adapters/<name>/` (uv, or [pixi](https://pixi.sh) for conda-forge). Each `run.py` speaks the JSONL protocol of `eval/methods/external.py` through the helpers in `adapters/_shared/bbadapter.py`. `setup.sh` fetches the pinned upstream commit and checksummed weights into `adapters/<name>/vendor/` (not committed) and builds what needs building; the commands are under [Running the complete benchmark](#running-the-complete-benchmark).
 
-```bash
-adapters/mambax/setup.sh        # uv; clf.p is in the upstream repo
-adapters/yuelbond/setup.sh      # uv; 4 checkpoints from Zenodo 15353365
-adapters/bondnet/setup.sh       # uv; 310 MB release archive from Zenodo 23080342
-adapters/mperformer/setup.sh    # uv + Uni-Core; 584 MB checkpoint from Google Drive (gdown)
-adapters/indigo/setup.sh        # pixi; builds the pyindigox module
-adapters/ball/setup.sh          # pixi; builds BALL's assign_bond_orders (Linux; long build)
-cd adapters/openbabel && uv sync
-uv run bond-bench methods       # shows what each adapter still needs
-```
-
-`antechamber` needs no setup beyond pixi; its environment is created on first run. The ML adapters run on CUDA when it is available. Adapters that report `edge_probs` (`mambax`, `yuelbond`, `bondnet`) can be decoded with `+hybrid`. Where a model has a 5-class output with an aromatic class, P(aromatic) is split equally between orders 1 and 2. `indigo` and `ball` assign bond orders to a given graph, so they receive the contact map A(X) that `canonical-O` uses (`send_contacts`), and their connectivity errors are those of `canonical-O`. Methods that do not predict formal charges or H counts report none, so their raw outputs are invalid for charged or H-stripped structures; `+project` and `+hybrid` repair them.
+The ML adapters run on CUDA when it is available. Adapters that report `edge_probs` (`mambax`, `yuelbond`, `bondnet`) can be decoded with `+hybrid`. Where a model has a 5-class output with an aromatic class, P(aromatic) is split equally between orders 1 and 2. `indigo` and `ball` assign bond orders to a given graph, so they receive the contact map A(X) that `canonical-O` uses (`send_contacts`), and their connectivity errors are those of `canonical-O`. Methods that do not predict formal charges or H counts report none, so their raw outputs are invalid for charged or H-stripped structures; `+project` and `+hybrid` repair them.
 
 Known issues are documented with each adapter: `adapters/README.md` covers the shared conventions and the `+hybrid` charge-separation issue, and `adapters/<name>/README.md` covers upstream bugs, version pins, limits and test status.
 
@@ -165,3 +154,97 @@ Results go to `results/<method_tag>/<stratum>__<obs>.parquet` (predictions) and 
 | `coverage` | fraction of structures the method supports; unsupported structures are excluded from the rates, while ⊥, errors and timeouts count as wrong |
 
 Robustness is measured on C1 (`sigma=` subgroups) or by on-the-fly noise (`--noise`). Equivariance (`--equivariance N`) compares Φ((σ,g)·x) with σ·Φ(x). Inputs with exact geometric symmetry are reported separately, because strict equivariance is impossible for them.
+
+## Running the complete benchmark
+
+These steps run every registered method on every built stratum and then score and plot the results. They assume a Linux machine with an NVIDIA GPU. The four ML adapters use CUDA when it is available and fall back to CPU, which is much slower.
+
+### Prerequisites
+
+- `uv`, `git` and `curl` on `PATH`.
+- [pixi](https://pixi.sh) for the `antechamber`, `indigo` and `ball` adapters. pixi is a single binary and installs without root:
+
+  ```bash
+  curl -fsSL https://pixi.sh/install.sh | PIXI_NO_PATH_UPDATE=1 bash   # installs to ~/.pixi/bin
+  export PATH="$HOME/.pixi/bin:$PATH"
+  ```
+
+  Use a recent release, because the committed `pixi.lock` files were written by one. Put the `PATH` line in your job scripts as well, since compute nodes may not read `~/.bashrc`. Without pixi, skip those three adapters; the others need only uv.
+- Disk space. The adapter environments and weights take several GB: the BALL build environment alone holds Qt6, Boost and compilers, and the ML weights total about 1 GB. If your home quota is small, move the caches to scratch:
+
+  ```bash
+  export PIXI_CACHE_DIR=/scratch/$USER/pixi-cache
+  export UV_CACHE_DIR=/scratch/$USER/uv-cache
+  ```
+
+  The environments themselves live inside the clone (`adapters/<name>/.venv` and `.pixi`), so clone the repository where there is room too.
+
+### 1. Get the code and the dataset
+
+```bash
+git clone <repository url> bond-bench && cd bond-bench
+uv sync
+uv run bond-bench pull            # needs GITHUB_TOKEN, GH_TOKEN or `gh auth login` while the repository is private
+uv run bond-bench validate
+```
+
+### 2. Set up the adapters (once)
+
+```bash
+adapters/mambax/setup.sh        # uv; clf.p is in the upstream repo
+adapters/yuelbond/setup.sh      # uv; 4 checkpoints from Zenodo 15353365
+adapters/bondnet/setup.sh       # uv; 310 MB release archive from Zenodo 23080342
+adapters/mperformer/setup.sh    # uv + Uni-Core; 584 MB checkpoint from Google Drive (gdown)
+adapters/indigo/setup.sh        # pixi; builds the pyindigox module
+adapters/ball/setup.sh          # pixi; builds BALL's assign_bond_orders from source (long)
+(cd adapters/openbabel && uv sync)
+pixi install --manifest-path adapters/antechamber/pixi.toml
+
+uv run bond-bench methods       # every row should say "ok"; otherwise it names what is missing
+```
+
+On a machine with little memory, limit the C++ build jobs, e.g. `BUILD_JOBS=4 adapters/ball/setup.sh`. Google Drive can refuse the MPerformer download when its quota is exceeded; rerun `adapters/mperformer/setup.sh` later. Each `setup.sh` skips what is already in place.
+
+### 3. Run every method
+
+```bash
+# built-in methods (in-process; --workers parallelizes over structures)
+for m in canonical-O canonical-R rdkit-determinebonds; do
+  uv run bond-bench run $m --workers 16 --equivariance 30
+done
+uv run bond-bench run canonical-O --param preset=atom_penalty --workers 16 --equivariance 30
+
+# wrapped published methods (one adapter process per batch of 256 structures)
+for m in openbabel antechamber indigo ball mambax yuelbond bondnet mperformer; do
+  uv run bond-bench run $m --equivariance 30
+done
+
+# valid-set wrappers: +project maps any invalid output to the nearest valid structure,
+# +hybrid decodes the edge probabilities of the models that report them
+for m in openbabel rdkit-determinebonds antechamber indigo ball mambax yuelbond bondnet mperformer; do
+  uv run bond-bench run $m+project
+done
+for m in mambax yuelbond bondnet; do
+  uv run bond-bench run $m+hybrid
+done
+```
+
+Each method writes to `results/<method_tag>/`. Rerunning a method replaces its results for the strata it covers.
+
+### 4. Score and plot
+
+```bash
+uv run bond-bench score --all-subgroups
+uv sync --extra plot && uv run bond-bench plot
+```
+
+### Notes
+
+- **Sample size.** Without `--n`, every structure of every stratum is used. Add `--n 200 --seed 0` for a quick, deterministic subset; the same `--n` and `--seed` give the same structures for every method.
+- **Parallelism and timeouts for adapters.** `--workers` and the per-structure `--timeout` apply only to the built-in methods. Adapters run one process per batch of 256 structures, and a batch times out after one hour. `antechamber` and `ball` additionally stop any single molecule after 600 s; `indigo` has no per-molecule limit.
+- **Optional variants** are tagged separately in `results/`:
+  - `yuelbond --param checkpoint=geom_kekulized_cdg`, trained with 0.2 Å noise (relevant to C1);
+  - `ball --param strategy=a_star` or `strategy=ilp`;
+  - `indigo --param algorithm=astar`;
+  - `bondnet --param seed=43` or `seed=44`, other training seeds.
+- **Known issues.** `+hybrid` returns charge-separated aromatic rings for `mambax`, `yuelbond` and `bondnet`, which lowers their scores (see `adapters/README.md`). Method-specific issues are in `adapters/<name>/README.md`.
