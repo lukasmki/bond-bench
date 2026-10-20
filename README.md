@@ -24,6 +24,17 @@ To publish a new dataset release after a full build, run `uv run python scripts/
 
 The dataset is derived from third-party sources with their own licenses; see [LICENSE.md](LICENSE.md).
 
+## Getting published results
+
+Benchmark results are published as a separate release (tag `results-v<schema version>`), so you can score and plot them without rerunning every method:
+
+```bash
+uv run bond-bench pull --results       # predictions, scores, provenance and plots into results/
+uv run bond-bench score
+```
+
+The archive is checked against the release's `SHA256SUMS`. As with the dataset, local files that differ from the release are kept unless you pass `--force`, and results for methods not in the release are left alone. `results/summary.parquet` is regenerated afterwards, so it covers both. Each run's `provenance.json` records the SHA-256 of the stratum file it used, which matches the dataset release's `SHA256SUMS`.
+
 ## Building the dataset
 
 The dataset is defined by `assets/benchmark_strata_manifest.csv`. Each stratum is built by its own builder into `dataset/<stratum_id>.h5`:
@@ -237,6 +248,14 @@ Each method writes to `results/<method_tag>/`. Rerunning a method replaces its r
 uv run bond-bench score --all-subgroups
 uv sync --extra plot && uv run bond-bench plot
 ```
+
+### 5. Publish
+
+```bash
+uv run python scripts/publish_results.py
+```
+
+This regenerates `results/summary.parquet`, packs `results/` into `build/results-release/` as `results.tar.gz`, `summary.parquet` and `SHA256SUMS`, and prints the `gh release create` command (or `gh release upload --clobber` to replace the assets of an existing release). Local paths in `provenance.json` are made relative to the repository. Runs made with `--n` are refused unless you pass `--allow-partial`.
 
 ### Notes
 

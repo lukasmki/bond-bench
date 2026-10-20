@@ -27,6 +27,7 @@ import numpy as np
 import polars as pl
 
 from ..data.builders.base import git_commit
+from ..data.download import sha256sum
 from ..data.manifest import REPO_ROOT, StratumSpec
 from ..data.sampling import derive_seed
 from ..data.schema import MoleculeRecord
@@ -334,6 +335,12 @@ def check_equivariance(runner: Runner, queries: Sequence[Query], preds: Sequence
     return pl.DataFrame(rows)
 
 
+def dataset_label(path: Path) -> str:
+    """``path`` relative to the repository when inside it, so provenance carries no local paths."""
+    path = Path(path).resolve()
+    return str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else path.name
+
+
 def run(
     method_spec: str,
     strata: Sequence[str],
@@ -364,7 +371,8 @@ def run(
         reader = StratumReader(path)
         run_stratum(runner, reader, specs.get(stratum), out_dir, observation, n, seed, noise, reps, equivariance)
         prov["runs"][stratum] = {
-            "dataset": str(path),
+            "dataset": dataset_label(path),
+            "dataset_sha256": sha256sum(path),
             "dataset_built_at": str(reader.attrs.get("built_at", "")),
             "dataset_git_commit": str(reader.attrs.get("git_commit", "")),
             "n": n,

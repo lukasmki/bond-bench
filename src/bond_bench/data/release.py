@@ -62,6 +62,43 @@ def api_asset_urls(repo: str, tag: str, token: str) -> dict[str, str]:
         return {asset["name"]: asset["url"] for asset in json.load(resp)["assets"]}
 
 
+class ReleaseSession:
+    """Download verified assets of one release, via the API when a token is available."""
+
+    def __init__(self, repo: str, tag: str, token: str | None):
+        self.repo, self.tag = repo, tag
+        if token:
+            self._api_urls = api_asset_urls(repo, tag, token)
+            self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/octet-stream"}
+        else:
+            self._api_urls = None
+            self.headers = None
+
+    def url(self, name: str) -> str:
+        return self._api_urls[name] if self._api_urls is not None else asset_url(name, self.repo, self.tag)
+
+    def checksums(self, staging: Path) -> dict[str, str]:
+        """Fetch the release's ``SHA256SUMS`` into ``staging`` and parse it."""
+        fetch(self.url(CHECKSUMS), staging / CHECKSUMS, headers=self.headers)
+        return parse_checksums((staging / CHECKSUMS).read_text())
+
+    def download(self, staging: Path, wanted: dict[str, str]) -> None:
+        """Fetch {asset: sha256} into ``staging`` and check every checksum."""
+        errors = fetch_many(((self.url(name), staging / name) for name in wanted), headers=self.headers)
+        failed = {path.name: exc for path, exc in errors.items() if exc is not None}
+        if failed:
+            raise RuntimeError(f"download failed: {failed}")
+        for name, digest in wanted.items():
+            got = sha256sum(staging / name)
+            if got != digest:
+                raise RuntimeError(f"checksum mismatch for {name}: expected {digest}, got {got}")
+
+
+def release_error(what: str, repo: str, tag: str, token: str | None, exc: Exception) -> RuntimeError:
+    hint = "" if token else " (private repositories need GITHUB_TOKEN or `gh auth login`)"
+    return RuntimeError(f"cannot fetch {what} release {tag!r} from {repo}: {exc!r}{hint}")
+
+
 def local_path(dataset_dir: Path, asset: str) -> Path:
     """Where a release asset lives inside the dataset directory."""
     if asset.endswith(REPORT_SUFFIX):
@@ -152,37 +189,20 @@ def pull(
     dataset_dir = Path(dataset_dir)
     token = github_token()
     try:
-        if token:
-            api_urls = api_asset_urls(repo, tag, token)
-            urls = lambda names: {name: api_urls[name] for name in names}  # noqa: E731
-            headers = {"Authorization": f"Bearer {token}", "Accept": "application/octet-stream"}
-        else:
-            urls = lambda names: {name: asset_url(name, repo, tag) for name in names}  # noqa: E731
-            headers = None
+        session = ReleaseSession(repo, tag, token)
         dataset_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=dataset_dir, prefix=".pull-") as tmp:
             staging = Path(tmp)
-            fetch(urls([CHECKSUMS])[CHECKSUMS], staging / CHECKSUMS, headers=headers)
-            wanted = _select(parse_checksums((staging / CHECKSUMS).read_text()), strata)
+            wanted = _select(session.checksums(staging), strata)
             status, todo = _plan(dataset_dir, wanted, force)
-            errors = fetch_many(
-                ((url, staging / name) for name, url in urls(todo).items()), headers=headers
-            )
-            failed = {path.name: exc for path, exc in errors.items() if exc is not None}
-            if failed:
-                raise RuntimeError(f"download failed: {failed}")
-            for name in todo:
-                got = sha256sum(staging / name)
-                if got != wanted[name]:
-                    raise RuntimeError(f"checksum mismatch for {name}: expected {wanted[name]}, got {got}")
+            session.download(staging, {name: wanted[name] for name in todo})
             for name, dest in todo.items():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(staging / name, dest)
                 status[name] = "downloaded"
                 log.info("%s -> %s", name, dest)
     except (urllib.error.URLError, KeyError) as exc:
-        hint = "" if token else " (private repositories need GITHUB_TOKEN or `gh auth login`)"
-        raise RuntimeError(f"cannot fetch dataset release {tag!r} from {repo}: {exc!r}{hint}") from exc
+        raise release_error("dataset", repo, tag, token, exc) from exc
     if strata is not None:
         write_index(dataset_dir)
     return status

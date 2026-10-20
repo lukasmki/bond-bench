@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import polars as pl
@@ -41,15 +42,39 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def cmd_pull(args: argparse.Namespace) -> int:
+    if args.results is not None:
+        return _pull_results(args)
     from .data.release import pull
 
     try:
-        status = pull(args.out, strata=args.strata or None, repo=args.repo, tag=args.tag, force=args.force)
+        status = pull(
+            args.out, strata=args.strata or None, repo=args.repo, tag=args.tag or RELEASE_TAG, force=args.force
+        )
     except (FileExistsError, ValueError, RuntimeError) as exc:
         print(exc, file=sys.stderr)
         return 1
     for name, state in sorted(status.items()):
         print(f"{name:20s} {state}")
+    return 0
+
+
+def _pull_results(args: argparse.Namespace) -> int:
+    from .eval.release import RESULTS_TAG, pull_results
+
+    if args.strata:
+        print("--results pulls every method; stratum ids are not accepted", file=sys.stderr)
+        return 2
+    try:
+        status = pull_results(args.results, repo=args.repo, tag=args.tag or RESULTS_TAG, force=args.force)
+    except (FileExistsError, RuntimeError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    methods = defaultdict(Counter)
+    for rel, state in status.items():
+        methods[rel.split("/", 1)[0]][state] += 1
+    for method, counts in sorted(methods.items()):
+        print(f"{method:32s} " + ", ".join(f"{n} {state}" for state, n in sorted(counts.items())))
+    print(f"summary regenerated: {Path(args.results) / 'summary.parquet'}")
     return 0
 
 
@@ -174,9 +199,13 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--cache-dir", type=Path, default=default_cache_dir())
     build.set_defaults(func=cmd_build)
 
-    pull = sub.add_parser("pull", help="download the prebuilt dataset from a GitHub release")
+    pull = sub.add_parser("pull", help="download the prebuilt dataset (or published results) from a GitHub release")
     pull.add_argument("strata", nargs="*", help="stratum ids (default: all released strata)")
-    pull.add_argument("--tag", default=RELEASE_TAG, help="release tag (default: %(default)s)")
+    pull.add_argument(
+        "--results", type=Path, nargs="?", const=DEFAULT_RESULTS, default=None, metavar="DIR",
+        help=f"pull benchmark results instead, into DIR (default: {DEFAULT_RESULTS.name}/)",
+    )
+    pull.add_argument("--tag", default=None, help=f"release tag (default: {RELEASE_TAG}, or results-v… with --results)")
     pull.add_argument("--repo", default=RELEASE_REPO, help="GitHub owner/name (default: %(default)s)")
     pull.add_argument("--force", action="store_true", help="overwrite local files that differ from the release")
     pull.set_defaults(func=cmd_pull)
