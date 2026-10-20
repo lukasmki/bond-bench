@@ -7,7 +7,8 @@ fetch_git https://github.com/FanmengWang/MPerformer.git 0e8d6ae61edc8eb0f342b968
 ckpt=$here/vendor/weight/checkpoint.pt
 if [ ! -s "$ckpt" ]; then
     mkdir -p "$(dirname "$ckpt")"
-    uvx --quiet gdown 1sHWm1xOy0I8_R50dPANfMUXoRQkoPCBJ -O "$ckpt"
+    uvx --quiet gdown 1sHWm1xOy0I8_R50dPANfMUXoRQkoPCBJ -O "$ckpt.part"  # a failed download leaves no checkpoint
+    mv "$ckpt.part" "$ckpt"
 fi
 fetch_file unused "$ckpt" 7be90a592d747795a701f5f7533872a83247c16975d55068e78f410f251ebbd8
 cd "$here" && uv sync --quiet
