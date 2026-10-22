@@ -126,12 +126,14 @@ class CanonicalO(Method):
             return Prediction.fail(Status(res.status), res.reason)
         pool = [s.graph for s in res.solutions]
         colors = wl_colors(z, query.positions, edges)
+        flags = []
         if res.truncated:  # pick inside the full co-optimal set, not the truncated pool
             tied = decode(spec, [*prior, *tiebreak_objectives(edges, query.positions, colors)], pool="all", max_pool=p["max_pool"])
-            best = pick([s.graph for s in tied.solutions], colors, query.positions)
+            if not tied.solutions:  # the tie-break stages timed out: fall back to the pool
+                flags.append("tiebreak_timeout")
+            best = pick([s.graph for s in tied.solutions] or pool, colors, query.positions)
         else:
             best = pick(pool, colors, query.positions)
-        flags = []
         if len(pool) > 1:
             flags.append("prior_tied")
         if res.truncated:

@@ -17,7 +17,7 @@ from typing import Any, ClassVar
 import numpy as np
 
 from ..core.elements import SUPPORTED_ELEMENTS
-from ..prediction import Prediction
+from ..prediction import Prediction, Status
 from ..query import Query
 
 
@@ -114,7 +114,14 @@ class Wrapper(Method):
 
     def predict_batch(self, queries: Sequence[Query]) -> list[Prediction]:
         # the inner method sees the whole batch (one adapter process per batch)
-        return [self.finish(q, p) for q, p in zip(queries, self.inner.predict_batch(queries))]
+        return [self._finish_safely(q, p) for q, p in zip(queries, self.inner.predict_batch(queries))]
+
+    def _finish_safely(self, query: Query, pred: Prediction) -> Prediction:
+        """A post-processing failure is that structure's result, not the batch's."""
+        try:
+            return self.finish(query, pred)
+        except Exception as exc:
+            return Prediction.fail(Status.ERROR, f"{self.name}: {type(exc).__name__}: {exc}", runtime_s=pred.runtime_s)
 
     def version(self) -> str:
         return self.inner.version()
@@ -143,7 +150,7 @@ def register(cls):
 
 
 def _load_all() -> None:
-    from . import adapters, external, hybrid, optimization, rdkit_determine, rule, wrappers  # noqa: F401
+    from . import adapters, external, hybrid, learned, optimization, rdkit_determine, rule, wrappers  # noqa: F401
 
 
 def parse_value(text: str) -> Any:

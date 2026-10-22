@@ -11,6 +11,7 @@ Layout under ``results/<method_tag>/``::
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import time
@@ -31,7 +32,7 @@ from ..data.download import sha256sum
 from ..data.manifest import REPO_ROOT, StratumSpec
 from ..data.sampling import derive_seed
 from ..data.schema import MoleculeRecord
-from ..data.store import StratumReader
+from ..data.store import StratumReader, write_parquet_atomic
 from .core.canon import same_resonance_class, wl_colors
 from .metrics import grade
 from .methods.base import Method, base_method, get_method
@@ -280,10 +281,11 @@ def run_stratum(
             continue
         log.info("[%s/%s] %s on %d structures", reader.stratum_id, obs, runner.method.tag, len(queries))
         preds = runner.predict(queries)
-        pl.DataFrame([to_row(q.structure_id, p) for q, p in zip(queries, preds)], infer_schema_length=None).write_parquet(
-            out_dir / f"{stem}.parquet"
+        write_parquet_atomic(
+            pl.DataFrame([to_row(q.structure_id, p) for q, p in zip(queries, preds)], infer_schema_length=None),
+            out_dir / f"{stem}.parquet",
         )
-        score_frame(records, obs, preds).write_parquet(out_dir / f"{stem}.scores.parquet")
+        write_parquet_atomic(score_frame(records, obs, preds), out_dir / f"{stem}.scores.parquet")
         written.append(out_dir / f"{stem}.parquet")
 
         for sigma in noise:
@@ -298,11 +300,12 @@ def run_stratum(
                 pl.lit(float(sigma)).alias("noise_sigma"),
                 pl.Series("noise_rep", [r for _ in records for r in range(reps)]),
             )
-            df.write_parquet(out_dir / f"{stem}__noise.s{sigma:.3f}.parquet")
+            write_parquet_atomic(df, out_dir / f"{stem}__noise.s{sigma:.3f}.parquet")
 
         if equivariance:
-            check_equivariance(runner, queries[:equivariance], preds[:equivariance], seed).write_parquet(
-                out_dir / f"{stem}__equivariance.parquet"
+            write_parquet_atomic(
+                check_equivariance(runner, queries[:equivariance], preds[:equivariance], seed),
+                out_dir / f"{stem}__equivariance.parquet",
             )
     return written
 
@@ -360,9 +363,7 @@ def run(
     runner = Runner(method_spec, params or {}, workers=workers, timeout=timeout)
     out_dir = Path(results_dir) / runner.method.tag
     out_dir.mkdir(parents=True, exist_ok=True)
-    prov_path = out_dir / "provenance.json"
-    prov = json.loads(prov_path.read_text()) if prov_path.exists() else {"runs": {}}
-    prov["method"] = runner.method.provenance()
+    method_prov = runner.method.provenance()
     for stratum in strata:
         path = Path(dataset_dir) / f"{stratum}.h5"
         if not path.exists():
@@ -370,7 +371,7 @@ def run(
             continue
         reader = StratumReader(path)
         run_stratum(runner, reader, specs.get(stratum), out_dir, observation, n, seed, noise, reps, equivariance)
-        prov["runs"][stratum] = {
+        record_run(out_dir, method_prov, stratum, {
             "dataset": dataset_label(path),
             "dataset_sha256": sha256sum(path),
             "dataset_built_at": str(reader.attrs.get("built_at", "")),
@@ -384,9 +385,26 @@ def run(
             "timeout_s": timeout,
             "run_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "git_commit": git_commit(),
-        }
-    prov_path.write_text(json.dumps(prov, indent=2, default=str) + "\n")
+        })
     return out_dir
+
+
+def record_run(out_dir: Path, method_prov: dict[str, Any], stratum: str, entry: dict[str, Any]) -> None:
+    """Add one stratum to ``provenance.json`` as soon as it is written.
+
+    A run killed later (time limit) keeps the record of the strata it finished,
+    and concurrent runs of one method on different strata do not drop each
+    other's entries: the file is re-read and replaced under a lock.
+    """
+    prov_path = out_dir / "provenance.json"
+    with open(out_dir / ".provenance.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prov = json.loads(prov_path.read_text()) if prov_path.exists() else {"runs": {}}
+        prov["method"] = method_prov
+        prov["runs"][stratum] = entry
+        tmp = prov_path.with_name(prov_path.name + ".tmp")
+        tmp.write_text(json.dumps(prov, indent=2, default=str) + "\n")
+        tmp.replace(prov_path)
 
 
 def rescore(results_dir: Path, dataset_dir: Path) -> int:
@@ -405,6 +423,6 @@ def rescore(results_dir: Path, dataset_dir: Path) -> int:
             from_row(row, rec.strip_hydrogens().n_atoms if observation is Observation.STRIPPED else rec.n_atoms)
             for row, rec in zip(df.iter_rows(named=True), records)
         ]
-        score_frame(records, observation, preds).write_parquet(pred_path.with_suffix(".scores.parquet"))
+        write_parquet_atomic(score_frame(records, observation, preds), pred_path.with_suffix(".scores.parquet"))
         count += 1
     return count

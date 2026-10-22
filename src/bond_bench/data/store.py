@@ -42,6 +42,15 @@ def _meta_column(values: list[Any]) -> np.ndarray:
     return np.array(["" if v is None else str(v) for v in values], dtype=object)
 
 
+def write_parquet_atomic(df: pl.DataFrame, path: Path | str) -> Path:
+    """Write ``df`` via a hidden temporary file, so readers never see a partial file."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.tmp")
+    df.write_parquet(tmp)
+    tmp.replace(path)
+    return path
+
+
 def write_stratum(
     path: Path | str,
     records: Sequence[MoleculeRecord],

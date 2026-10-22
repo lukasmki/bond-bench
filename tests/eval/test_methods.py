@@ -225,3 +225,60 @@ def test_canonical_r_window_tables(windows):
     rec, q = _query("CC(=O)Nc1ccc(O)cc1")
     pred = get_method("canonical-R", {"windows": windows}).predict(q)
     assert pred.status is Status.OK and _smiles_of(q, pred.graph) == rec.smiles
+
+
+@pytest.fixture
+def tiebreak_times_out(monkeypatch):
+    """Truncated co-optimal pools whose tie-break re-solve then times out (the A1 crash)."""
+    from bond_bench.eval.core import ilp
+    from bond_bench.eval.core.ilp import DecodeResult
+    from bond_bench.eval.methods import hybrid, optimization, wrappers
+
+    def stop(self):
+        self.truncated = True
+        self.stop_search()
+
+    monkeypatch.setattr(ilp._Collector, "on_solution_callback", stop)
+
+    def decode(spec, objectives, pool="none", max_pool=64):
+        if any(o.name.startswith("P5") for o in objectives):
+            return DecodeResult("timeout", reason="stage 1 (P5 Σk·d) not proven optimal")
+        return ilp.decode(spec, objectives, pool=pool, max_pool=max_pool)
+
+    for module in (hybrid, optimization, wrappers):
+        monkeypatch.setattr(module, "decode", decode)
+
+
+def test_tiebreak_timeout_falls_back_to_the_pool(tiebreak_times_out):
+    from bond_bench.eval.methods.wrappers import project_to_valid
+
+    rec, q = _query("c1ccncc1")
+    edges, _ = contact_map(q.atomic_numbers, q.positions)
+    best, pool, reason = project_to_valid(q, edges, np.full(len(edges), 1.5))
+    assert best is not None and is_valid(q.atomic_numbers, q.total_charge, best) and reason == ""
+
+    o = get_method("canonical-O").predict(q)
+    assert o.status is Status.OK and "tiebreak_timeout" in o.flags
+
+    h = constrained_map(q, edges, _one_hot_logp(edges, Graph.from_record(rec).bond_dict()))
+    assert h.status is Status.OK and "tiebreak_timeout" in h.flags
+    assert is_valid(q.atomic_numbers, q.total_charge, h.graph)
+
+
+def test_wrapper_failure_is_that_structures_error():
+    from bond_bench.eval.methods.base import Wrapper
+
+    class Fails(Wrapper):
+        name = "fails"
+        family = "wrapper"
+
+        def finish(self, query, pred):
+            if query.structure_id == "bad":
+                raise ValueError("min() iterable argument is empty")
+            return pred
+
+    queries = [_query(s)[1] for s in ("CCO", "c1ccncc1")]
+    queries[0] = Query(**{**queries[0].__dict__, "structure_id": "bad"})
+    out = Fails(get_method("canonical-O")).predict_batch(queries)
+    assert out[0].status is Status.ERROR and "fails: ValueError" in out[0].reason
+    assert out[1].status is Status.OK

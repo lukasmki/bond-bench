@@ -55,7 +55,7 @@ def project_to_valid(
     candidates = pool
     if res.truncated:
         tied = decode(spec, [objective, *tiebreak_objectives(edges, query.positions, colors)], pool="all", max_pool=max_pool)
-        candidates = [s.graph for s in tied.solutions]
+        candidates = [s.graph for s in tied.solutions] or pool  # the tie-break stages can time out
     return pick(candidates, colors, query.positions), pool, ""
 
 

@@ -73,7 +73,7 @@ class DecodeResult:
     status: str  # "ok" | "infeasible" | "timeout"
     solutions: list[Solution] = field(default_factory=list)
     reason: str = ""
-    truncated: bool = False  # solution pool hit its cap
+    truncated: bool = False  # solution pool hit its cap or the enumeration hit the time limit
 
     @property
     def best(self) -> Solution | None:
@@ -264,8 +264,11 @@ def decode(
         m.clear_objective()
         collector = _Collector(mdl, max_pool)
         status = _solver(spec, enumerate_all=True).solve(m, collector)
-        sols = [Solution(g, tuple(values)) for g in collector.graphs]
-        return DecodeResult("ok", sols, truncated=collector.truncated)
+        # OPTIMAL means the enumeration finished; otherwise (time limit) the pool is incomplete
+        truncated = collector.truncated or status != cp_model.OPTIMAL
+        graphs = collector.graphs or [best_graph]  # the proven optimum is co-optimal by construction
+        sols = [Solution(g, tuple(values)) for g in graphs]
+        return DecodeResult("ok", sols, truncated=truncated)
 
     k_best = int(pool)
     last_expr, last_scale = exprs[-1]

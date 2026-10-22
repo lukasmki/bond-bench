@@ -20,3 +20,6 @@ results/
 # Adapter environments and fetched upstream code/weights
 adapters/*/vendor/
 .pixi/
+
+# Trained model checkpoints (canonical-M)
+models/

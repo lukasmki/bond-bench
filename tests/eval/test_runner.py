@@ -67,3 +67,36 @@ def test_plot_smoke(tmp_path, records, manifest):
     names = {p.name for p in paths}
     assert {"strata_smiles_match.png", "equivariance.png"} <= names
     assert all(p.stat().st_size > 0 for p in paths)
+
+
+def test_provenance_survives_a_killed_run_and_merges_concurrent_runs(tmp_path, records, manifest, monkeypatch):
+    import json
+
+    import pytest
+
+    from bond_bench.eval import runner
+    from bond_bench.eval.runner import record_run
+
+    data = tmp_path / "dataset"
+    for sid in ("B1", "C1"):
+        write_stratum(data / f"{sid}.h5", records, {"stratum_id": sid})
+    real = runner.run_stratum
+
+    def killed_on_c1(run_, reader, *args, **kw):
+        if reader.stratum_id == "C1":
+            raise KeyboardInterrupt("time limit")
+        return real(run_, reader, *args, **kw)
+
+    monkeypatch.setattr(runner, "run_stratum", killed_on_c1)
+    with pytest.raises(KeyboardInterrupt):
+        run("canonical-R", ["B1", "C1"], data, manifest, results_dir=tmp_path / "results", n=2)
+    out = tmp_path / "results" / "canonical-R"
+    prov = json.loads((out / "provenance.json").read_text())
+    assert sorted(prov["runs"]) == ["B1"] and prov["method"]["method"] == "canonical-R"
+
+    # another job (same method, other stratum) finished meanwhile: its entry must survive
+    record_run(out, prov["method"], "C5", {"n": None})
+    monkeypatch.setattr(runner, "run_stratum", real)
+    run("canonical-R", ["C1"], data, manifest, results_dir=tmp_path / "results", n=2)
+    assert sorted(json.loads((out / "provenance.json").read_text())["runs"]) == ["B1", "C1", "C5"]
+    assert not [p.name for p in out.iterdir() if p.name.endswith(".tmp")]

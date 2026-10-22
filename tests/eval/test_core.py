@@ -123,3 +123,20 @@ def test_graph_permutation_roundtrip():
     perm = np.random.default_rng(1).permutation(rec.n_atoms)
     assert g.permuted(perm).permuted(np.argsort(perm)) == g
     assert Chem.MolFromSmiles(rec.smiles) is not None
+
+
+def _enumeration_finds_nothing(self):
+    """Stand-in for an enumeration that hits its time limit before the first callback."""
+    self.truncated = True
+    self.stop_search()
+
+
+def test_pool_all_keeps_the_optimum_when_enumeration_finds_nothing(monkeypatch):
+    from bond_bench.eval.core import ilp
+
+    monkeypatch.setattr(ilp._Collector, "on_solution_callback", _enumeration_finds_nothing)
+    rec = embedded_record("c1ccccc1", "benzene")
+    spec = _fixed_support_spec(rec)
+    res = decode(spec, kim(spec), pool="all")
+    assert res.status == "ok" and res.truncated and len(res.solutions) == 1
+    assert is_valid(rec.atomic_numbers, rec.total_charge, res.solutions[0].graph)

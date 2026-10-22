@@ -119,6 +119,7 @@ Implemented methods:
 | --- | --- | --- |
 | `canonical-O` | optimization | Algorithm O: contact map A(X), then a lexicographic prior solved exactly with CP-SAT. The `kim2015` preset maximizes ΣB, then minimizes Σ\|q\|. The `atom_penalty` preset (`--param preset=atom_penalty`) minimizes the Wang et al. (2006) atomic penalty scores in `eval/tables/atom_penalties.csv`, then Σ\|q\|. It covers H, C, N, O, F, Si, P, S, Cl, Br and I; molecules with other elements are reported as unsupported. Returns every co-optimal structure; a `prior_tied` flag marks resonance or tautomer ambiguity. |
 | `canonical-R` | rule | Algorithm R: bond-length windows and angle-based hybridization feed a greedy cascade in certainty order. Windows are centred on MMFF94 reference lengths (`scripts/mmff_windows.py`), so no stratum is used; `--param windows=b2` selects windows fitted on B2 instead. Hamming-nearest projection onto 𝒢 follows. |
+| `canonical-M` | ml | Algorithm M: a PaiNN network (E(3)-invariant, permutation-equivariant) gives q(B_ij = k) on candidate pairs within 1.5 (r_i + r_j) and q(q_i, h_i) per atom; the entrywise argmax is returned, and validity is reported (`invalid` flag), not enforced. Trained by `scripts/train_canonical_m.py` on B2 with the resonance-aware loss (minimum NLL over the label's Kekulé and charge-placement alternatives). Needs `uv sync --extra ml` and a checkpoint (`--param checkpoint=<name>` loads `models/<name>.pt`; default `canonical-M`). Flags `ood_elements` and `ood_states` mark elements or (z, q, D) states absent from the training labels; `extra.in_training_set` marks B2 structures the model was trained on. Reports `edge_probs` and `atom_probs`. |
 | `rdkit-determinebonds` | optimization | RDKit's xyz2mol (Kim & Kim 2015). Requires explicit H. |
 | `openbabel` | external | Open Babel `ConnectTheDots` + `PerceiveBondOrders` (GPL-2.0). Adapter `openbabel`. |
 | `antechamber` | optimization | AmberTools antechamber `-j 4` (bondtype; Wang et al. 2006). Finds its own connectivity. Explicit H only; assigns no formal charges, so charged structures need `+project`. Adapter `antechamber` (pixi). |
@@ -130,7 +131,7 @@ Implemented methods:
 | `mperformer` | ml | MPerformer (GPL-3.0) on heavy atoms, upstream's thresholds on its continuous heads; predicts formal charges and H counts. Uses the checkpoint's trained charge head (`total_data`): upstream's `predict.py` asks for a head the checkpoint lacks and runs it untrained. Adapter `mperformer` (Uni-Core). |
 | `external` | external | Any program that speaks the JSONL protocol in `eval/methods/external.py`: `--param command='prog {input} {output}'`. Queries carry the contact map as `contacts` when the method sets `send_contacts`. |
 | `+project` | wrapper | Maps an invalid output to the nearest valid structure on the same support. |
-| `+hybrid` | wrapper | Algorithm H: constrained MAP over 𝒢 from the inner method's `edge_probs` (for ML models). |
+| `+hybrid` | wrapper | Algorithm H: constrained MAP over 𝒢 from the inner method's `edge_probs` (for ML models), plus its `atom_probs` as atom scores when it reports them. `canonical-M+hybrid` is canonical H. |
 
 The shared primitives P1–P6 of `assets/boa_canonical_algorithms.md` are in `src/bond_bench/eval/core/`:
 
@@ -139,6 +140,8 @@ The shared primitives P1–P6 of `assets/boa_canonical_algorithms.md` are in `sr
 - `validity.py`: the validity oracle
 - `ilp.py`: the CP-SAT decoder, with lexicographic stages, solution pools and ⊥ diagnosis
 - `canon.py`: equivariant tie-breaking and resonance classes
+
+The network, training targets and training loop of canonical M are in `src/bond_bench/eval/ml/` (`labels.py` needs only NumPy; `model.py` and `train.py` need PyTorch).
 
 To add a method, subclass `Method` (in `eval/methods/base.py`), declare its `Capabilities`, implement `predict`, and decorate the class with `@register`. A method with heavy or conflicting dependencies should instead get its own environment under `adapters/<name>/` and subclass `ExternalMethod`.
 
@@ -216,11 +219,21 @@ uv run bond-bench methods       # every row should say "ok"; otherwise it names 
 
 On a machine with little memory, limit the C++ build jobs, e.g. `BUILD_JOBS=4 adapters/ball/setup.sh`. Google Drive can refuse the MPerformer download when its quota is exceeded; rerun `adapters/mperformer/setup.sh` later. Each `setup.sh` skips what is already in place.
 
-### 3. Run every method
+### 3. Train canonical M (once)
+
+```bash
+uv sync --extra ml
+uv run python scripts/train_canonical_m.py --device cuda      # B2, 150 epochs: ~15 min on one A100
+uv run python scripts/train_canonical_m.py --device cuda --sigma-aug 0.05 --out canonical-M-sigma0.05   # optional
+```
+
+The checkpoint goes to `models/canonical-M.pt` (not committed). It records the training strata and their checksums, the configuration, the training ids and the validation history; `canonical-M` adds its checksum to the method version in `provenance.json`.
+
+### 4. Run every method
 
 ```bash
 # built-in methods (in-process; --workers parallelizes over structures)
-for m in canonical-O canonical-R rdkit-determinebonds; do
+for m in canonical-O canonical-R canonical-M rdkit-determinebonds; do
   uv run bond-bench run $m --workers 16 --equivariance 30
 done
 uv run bond-bench run canonical-O --param preset=atom_penalty --workers 16 --equivariance 30
@@ -238,18 +251,19 @@ done
 for m in mambax yuelbond bondnet; do
   uv run bond-bench run $m+hybrid
 done
+uv run bond-bench run canonical-M+hybrid --workers 16 --equivariance 30   # canonical H
 ```
 
 Each method writes to `results/<method_tag>/`. Rerunning a method replaces its results for the strata it covers.
 
-### 4. Score and plot
+### 5. Score and plot
 
 ```bash
 uv run bond-bench score --all-subgroups
 uv sync --extra plot && uv run bond-bench plot
 ```
 
-### 5. Publish
+### 6. Publish
 
 ```bash
 uv run python scripts/publish_results.py
@@ -265,5 +279,7 @@ This regenerates `results/summary.parquet`, packs `results/` into `build/results
   - `yuelbond --param checkpoint=geom_kekulized_cdg`, trained with 0.2 Å noise (relevant to C1);
   - `ball --param strategy=a_star` or `strategy=ilp`;
   - `indigo --param algorithm=astar`;
-  - `bondnet --param seed=43` or `seed=44`, other training seeds.
+  - `bondnet --param seed=43` or `seed=44`, other training seeds;
+  - `canonical-M --param checkpoint=canonical-M-sigma0.05`, trained with 0.05 Å noise (relevant to C1).
+- **canonical-M on B2.** B2 is its training stratum: 90% of B2 structures were seen in training (`extra.in_training_set`), so its B2 scores are not a held-out estimate.
 - **Known issues.** `+hybrid` returns charge-separated aromatic rings for `mambax`, `yuelbond` and `bondnet`, which lowers their scores (see `adapters/README.md`). Method-specific issues are in `adapters/<name>/README.md`.

@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from ..data.store import write_parquet_atomic
 from .metrics import CLASSES, f1_from_confusion
 
 RATES = ("valid", "exact", "resonance_match", "smiles_match", "connectivity_match", "taut_accept", "taut_pref")
@@ -100,7 +101,7 @@ def report(results_dir: Path, ci: bool = True) -> pl.DataFrame:
                 rows.append({"method": method, "stratum": stratum, "observation": obs,
                              "subgroup": f"{col.removeprefix('meta_')}={value}", **summarize(sub, ci)})
     out = pl.DataFrame(rows, infer_schema_length=None).sort(["stratum", "observation", "subgroup", "method"])
-    out.write_parquet(Path(results_dir) / "summary.parquet")
+    write_parquet_atomic(out, Path(results_dir) / "summary.parquet")
     return out
 
 

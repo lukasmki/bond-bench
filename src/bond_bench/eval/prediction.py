@@ -11,6 +11,10 @@ import numpy as np
 
 from .core.graph import Graph
 
+#: Class layout of ``Prediction.atom_probs``: P(q_i = ATOM_CHARGES[a], h_i = ATOM_HYDROGENS[b]) at [i, a, b].
+ATOM_CHARGES = (-2, -1, 0, 1, 2)
+ATOM_HYDROGENS = (0, 1, 2, 3, 4)
+
 
 class Status(StrEnum):
     OK = "ok"
@@ -30,6 +34,8 @@ class Prediction:
     #: probabilistic output: candidate pairs (m, 2) and P(B_ij = k), (m, 4).
     edge_pairs: np.ndarray | None = None
     edge_probs: np.ndarray | None = None
+    #: per-atom (formal charge, implicit H) probabilities, (n, |ATOM_CHARGES|, |ATOM_HYDROGENS|).
+    atom_probs: np.ndarray | None = None
     #: per-bond confidence margin aligned with ``graph.bonds`` (method-specific units).
     margin: np.ndarray | None = None
     flags: list[str] = field(default_factory=list)
@@ -77,6 +83,7 @@ def to_row(structure_id: str, p: Prediction) -> dict[str, Any]:
         "alternatives": json.dumps([_graph_to_json(a) for a in p.alternatives]) if p.alternatives else "",
         "edge_pairs": p.edge_pairs.reshape(-1).tolist() if p.edge_pairs is not None else None,
         "edge_probs": p.edge_probs.reshape(-1).tolist() if p.edge_probs is not None else None,
+        "atom_probs": p.atom_probs.reshape(-1).tolist() if p.atom_probs is not None else None,
         "flags": list(p.flags),
         "extra": json.dumps(p.extra, default=str) if p.extra else "",
     }
@@ -96,6 +103,7 @@ def from_row(row: dict[str, Any], n_atoms: int) -> Prediction:
     alts = [_graph_from_json(d) for d in json.loads(row["alternatives"])] if row.get("alternatives") else []
     pairs = row.get("edge_pairs")
     probs = row.get("edge_probs")
+    atom_probs = row.get("atom_probs")
     return Prediction(
         status=Status(row["status"]),
         graph=graph,
@@ -103,6 +111,10 @@ def from_row(row: dict[str, Any], n_atoms: int) -> Prediction:
         alternatives=alts,
         edge_pairs=np.asarray(pairs, dtype=np.int64).reshape(-1, 2) if pairs is not None else None,
         edge_probs=np.asarray(probs, dtype=np.float64).reshape(-1, 4) if probs is not None else None,
+        atom_probs=(
+            np.asarray(atom_probs, dtype=np.float64).reshape(n_atoms, len(ATOM_CHARGES), len(ATOM_HYDROGENS))
+            if atom_probs is not None else None
+        ),
         margin=np.asarray(row["margin"]) if row.get("margin") is not None else None,
         flags=list(row.get("flags") or []),
         runtime_s=float(row.get("runtime_s") or 0.0),
