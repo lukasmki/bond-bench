@@ -34,7 +34,7 @@ class Prediction:
     #: probabilistic output: candidate pairs (m, 2) and P(B_ij = k), (m, 4).
     edge_pairs: np.ndarray | None = None
     edge_probs: np.ndarray | None = None
-    #: per-atom (formal charge, implicit H) probabilities, (n, |ATOM_CHARGES|, |ATOM_HYDROGENS|).
+    #: per-atom (formal charge, implicit H) probabilities, (n, len(ATOM_CHARGES), len(ATOM_HYDROGENS)).
     atom_probs: np.ndarray | None = None
     #: per-bond confidence margin aligned with ``graph.bonds`` (method-specific units).
     margin: np.ndarray | None = None

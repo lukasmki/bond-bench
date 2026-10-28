@@ -19,6 +19,33 @@ def test_kekule_swap_is_resonance_match_not_exact():
     assert row["valid"] and not row["exact"] and row["resonance_match"] and row["smiles_match"]
 
 
+def test_equivalent_resonance_forms_score_full_f1():
+    rec = embedded_record("c1ccccc1[N+](=O)[O-]", "nitrobenzene")
+    g = _swap_kekule(rec)
+    nitro = np.isin(rec.atomic_numbers[g.bonds], (7, 8)).all(axis=1)
+    orders = g.orders.copy()
+    orders[nitro] = 3 - orders[nitro]  # the other nitro placement
+    o = np.flatnonzero(rec.atomic_numbers == 8)
+    charges = g.charges.copy()
+    charges[o] = charges[o[::-1]]
+    swapped = Graph(g.n, g.bonds, orders, charges, g.hydrogens, g.radicals)
+    row = grade(rec, "explicit_h", Prediction.ok(swapped))
+    assert not row["exact"] and row["smiles_match"]
+    assert f1_from_confusion(row["confusion"])["f1_macro"] == 1.0
+
+
+def test_charge_separated_form_is_not_equivalent():
+    rec = embedded_record("CC(C)=O", "acetone")
+    g = Graph.from_record(rec)
+    co = np.isin(rec.atomic_numbers[g.bonds], (6, 8)).all(axis=1) & (g.orders == 2)
+    i, j = g.bonds[co][0]
+    orders, charges = g.orders.copy(), g.charges.copy()
+    orders[co] = 1
+    charges[[i, j]] = (1, -1) if rec.atomic_numbers[i] == 6 else (-1, 1)
+    row = grade(rec, "explicit_h", Prediction.ok(Graph(g.n, g.bonds, orders, charges, g.hydrogens, g.radicals)))
+    assert f1_from_confusion(row["confusion"])["f1_macro"] < 1.0
+
+
 def test_exact_and_confusion_bookkeeping():
     rec = embedded_record("C=CC#N", "acrylonitrile")
     row = grade(rec, "explicit_h", Prediction.ok(Graph.from_record(rec)))

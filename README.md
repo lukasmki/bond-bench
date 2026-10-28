@@ -107,9 +107,12 @@ uv run bond-bench plot --metric smiles_match taut_pref --format pdf
 
 `bond-bench plot` writes:
 
-- `strata_<metric>.png`: per-stratum bars for each method, with 95% CIs
-- `noise_c1_<metric>.png`: robustness curves over the C1 σ ladder, plus `noise_onthefly_*` when `--noise` was used
-- `equivariance.png`: violation rates per method
+- `strata_<metric>.png`: one row per method, sorted by overall score (the same score as `top_<metric>.png`), with an overall panel followed by one panel per stratum, with 95% CIs
+- `top_<metric>.png`: the 5 best methods plus the canonical methods, ranked by the mean over strata of metric × coverage (unsupported molecules count as failures); only methods run on every stratum are ranked
+- `overall.png`: every method's overall score on each metric side by side, one panel per metric, with its rank on that metric beside each dot; rows sorted by mean rank over the metrics
+- `overall_raw.png`: the same, with `+project` and `+hybrid` methods dropped, so base methods are ranked among themselves
+- `noise_c1_<metric>.png`: the same layout with one panel per σ of the C1 ladder, plus `noise_onthefly_*` when `--noise` was used
+- `equivariance.png`: violation rates per method at three levels of strictness
 
 `--obs auto` (the default) follows the manifest's `hydrogens_default`: `Stripped` strata run H-free, `Present` strata run with explicit H, and `Both`/`Present + stripped` strata run both. With `--n`, records are sampled by group, so C1 noise ladders and B5 tautomer groups stay whole.
 

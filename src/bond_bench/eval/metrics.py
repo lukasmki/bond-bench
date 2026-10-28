@@ -10,6 +10,7 @@ from ..data.chem import LabelError, identifiers, record_to_mol
 from ..data.schema import COORDINATION, MoleculeRecord
 from .core.canon import same_resonance_class
 from .core.graph import Graph
+from .core.ilp import DecodeSpec, Objective, decode
 from .core.validity import check
 from .prediction import Prediction, Status
 from .query import Observation
@@ -35,6 +36,43 @@ def graph_smiles(z: np.ndarray, positions: np.ndarray, g: Graph, total_charge: i
         return identifiers(record_to_mol(rec))[0]
     except (LabelError, Exception):  # RDKit raises several types
         return None
+
+
+def closest_label_form(
+    z: np.ndarray, total_charge: int, ref: Graph, pred: Graph | None, time_limit: float = 10.0
+) -> Graph:
+    """Member of the label's equivalent-resonance class that best agrees with ``pred``.
+
+    The class is that of ``ml.labels.label_class``: same supp B and h, octet
+    states, minimal Σ|q| but never more charge-separated than the label
+    (Kekulé alternatives, the two nitro or carboxylate placements, ...).
+    Agreement counts label bonds whose order ``pred`` reproduces; ties, solver
+    failures and labels outside orders 1–3 keep the label itself.
+    """
+    if pred is None or not np.isin(ref.orders, (1, 2, 3)).all():
+        return ref
+    p = pred.bond_dict()
+    want = np.array([p.get((int(i), int(j)), 0) for i, j in ref.bonds.tolist()], dtype=np.int64)
+    if not np.any((want != ref.orders) & np.isin(want, (1, 2, 3))):
+        return ref  # no other member can agree on more bonds
+    allowed = np.ones((len(ref.bonds), 4), dtype=bool)
+    allowed[:, 0] = False
+    spec = DecodeSpec(
+        z, total_charge, ref.bonds, allowed=allowed, hydrogens=ref.hydrogens,
+        radicals=int(ref.radicals.sum()), table="octet",
+        c_max=max(1, int(np.abs(ref.charges).max(initial=0))), time_limit=time_limit,
+    )
+    agree = (np.arange(4)[None, :] == want[:, None]).astype(np.float64)
+    res = decode(spec, [
+        Objective(atom=lambda i, st, eta: -abs(st.charge), name="min Σ|q|"),
+        Objective(edge=agree, name="agreement"),
+    ])
+    if res.status != "ok" or res.best is None:
+        return ref
+    best = res.best.graph
+    if np.abs(best.charges).sum() > np.abs(ref.charges).sum():
+        return ref
+    return best if (best.orders == want).sum() > (ref.orders == want).sum() else ref
 
 
 def confusion(pred: Graph | None, ref: Graph, heavy: np.ndarray) -> np.ndarray:
@@ -81,7 +119,9 @@ def grade(
     smiles = graph_smiles(z, ref_rec.positions, g, ref_rec.total_charge) if g is not None else None
     row["smiles"] = smiles or ""
     row["smiles_match"] = smiles is not None and smiles == record.smiles
-    row["confusion"] = confusion(g, ref, heavy).reshape(-1).tolist()
+    # bond orders are graded against the equivalent resonance form closest to the prediction
+    label = closest_label_form(z, ref_rec.total_charge, ref, g)
+    row["confusion"] = confusion(g, label, heavy).reshape(-1).tolist()
     if g is not None:
         row["charge_correct"] = int((g.charges[heavy] == ref.charges[heavy]).sum())
         row["h_correct"] = int((g.hydrogens[heavy] == ref.hydrogens[heavy]).sum())

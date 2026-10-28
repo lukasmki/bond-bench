@@ -65,7 +65,7 @@ def test_plot_smoke(tmp_path, records, manifest):
     run("canonical-O", ["C1"], data, manifest, results_dir=tmp_path / "results", n=3, equivariance=2)
     paths = plot_all(tmp_path / "results", metrics=["smiles_match"])
     names = {p.name for p in paths}
-    assert {"strata_smiles_match.png", "equivariance.png"} <= names
+    assert {"strata_smiles_match.png", "top_smiles_match.png", "overall.png", "overall_raw.png", "equivariance.png"} <= names
     assert all(p.stat().st_size > 0 for p in paths)
 
 

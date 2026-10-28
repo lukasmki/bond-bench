@@ -23,3 +23,6 @@ adapters/*/vendor/
 
 # Trained model checkpoints (canonical-M)
 models/
+
+# Sphinx build output
+docs/_build/
